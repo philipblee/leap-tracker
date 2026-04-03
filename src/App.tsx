@@ -1,5 +1,5 @@
 import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-dom';
-import { useState, useEffect } from 'react';
+import { useState } from 'react';
 import PinLock from './pages/PinLock';
 import Dashboard from './pages/Dashboard';
 import Positions from './pages/Positions';

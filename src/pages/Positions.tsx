@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { getOpenPositions, deletePosition, closePosition } from '../services/positionService';
+import { getOpenPositions, deletePosition } from '../services/positionService';
 import type { Position } from '../types';
 import { formatCurrency, formatPct } from '../utils/calculations';
 import { getFunctions, httpsCallable } from 'firebase/functions';

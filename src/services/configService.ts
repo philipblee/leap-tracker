@@ -16,7 +16,6 @@ const CONFIG_DOC = 'app_config';
 
 // Get config
 export const getConfig = async (): Promise<Config | null> => {
-  const docRef = doc(db, COLLECTION, CONFIG_DOC);
   const collections = await getDocs(collection(db, COLLECTION));
   if (collections.empty) return null;
   const snapshot = collections.docs.find(d => d.id === CONFIG_DOC);
