@@ -93,7 +93,7 @@ function Positions() {
         <table style={styles.table}>
           <thead>
             <tr>
-              {['Account','Ticker','Type','Strike','Expiry','Contracts','Cost Basis','Current Value','P&L $','P&L %','Actions'].map(h => (
+              {['Account','Ticker','Type','Strike','Expiry','Buy Date','Contracts','Current Value','Cost Basis','P&L $','P&L %','Actions'].map(h => (
                 <th key={h} style={styles.th}>{h}</th>
               ))}
             </tr>
@@ -113,9 +113,10 @@ function Positions() {
                   <td style={styles.td}>{p.optionType}</td>
                   <td style={styles.td}>${p.strike}</td>
                   <td style={styles.td}>{p.expiry}</td>
+                  <td style={styles.td}>{p.buyDate}</td>
                   <td style={styles.td}>{p.contracts}</td>
-                  <td style={styles.td}>{formatCurrency(p.costBasis)}</td>
                   <td style={styles.td}>{currentVal !== null ? formatCurrency(currentVal) : '—'}</td>
+                  <td style={styles.td}>{formatCurrency(p.costBasis)}</td>
                   <td style={{ ...styles.td, color: pnl === null ? '#fff' : pnl >= 0 ? '#00ff88' : '#ff4444' }}>
                     {pnl !== null ? formatCurrency(pnl) : '—'}
                   </td>
@@ -132,7 +133,7 @@ function Positions() {
         </tbody>
           <tfoot>
             <tr style={{ backgroundColor: '#2a2a3e' }}>
-              <td style={styles.td} colSpan={5}><strong>TOTAL</strong></td>
+              <td style={styles.td} colSpan={6}><strong>TOTAL</strong></td>
               <td style={styles.td}>
                 <strong>
                   {filtered.reduce((sum, p) => sum + p.contracts, 0)}
@@ -140,12 +141,12 @@ function Positions() {
               </td>
               <td style={styles.td}>
                 <strong>
-                  {formatCurrency(filtered.reduce((sum, p) => sum + p.costBasis, 0))}
+                  {formatCurrency(filtered.reduce((sum, p) => sum + (currentValues[p.id!] ?? p.costBasis), 0))}
                 </strong>
               </td>
               <td style={styles.td}>
                 <strong>
-                  {formatCurrency(filtered.reduce((sum, p) => sum + (currentValues[p.id!] ?? p.costBasis), 0))}
+                  {formatCurrency(filtered.reduce((sum, p) => sum + p.costBasis, 0))}
                 </strong>
               </td>
               <td style={{ ...styles.td, color: filtered.reduce((sum, p) => sum + ((currentValues[p.id!] ?? p.costBasis) - p.costBasis), 0) >= 0 ? '#00ff88' : '#ff4444' }}>
