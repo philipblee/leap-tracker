@@ -1,10 +1,11 @@
 import { useState, useEffect } from 'react';
-import { getOpenPositions, deletePosition } from '../services/positionService';
+import { getOpenPositions, deletePosition, updatePosition } from '../services/positionService';
 import type { Position } from '../types';
 import { formatCurrency, formatPct } from '../utils/calculations';
 import { getFunctions, httpsCallable } from 'firebase/functions';
 import AddPositionModal from '../components/AddPositionModal';
 import ClosePositionModal from '../components/ClosePositionModal';
+
 
 function Positions() {
   const [positions, setPositions] = useState<Position[]>([]);
@@ -18,34 +19,49 @@ function Positions() {
   const load = async () => {
     const data = await getOpenPositions();
     setPositions(data);
+    // Load stored current values from Firestore
+    const storedValues: { [id: string]: number } = {};
+    data.forEach(p => {
+      if (p.currentValue && p.id) {
+        storedValues[p.id] = p.currentValue;
+      }
+    });
+    setCurrentValues(storedValues);
     setLoading(false);
   };
 
   useEffect(() => { load(); }, []);
 
-  const handleRefresh = async () => {
-    setRefreshing(true);
-    const functions = getFunctions();
-    const getOptionPrice = httpsCallable(functions, 'getOptionPrice');
-    const updated: { [id: string]: number } = {};
+    const handleRefresh = async () => {
+      setRefreshing(true);
+      const functions = getFunctions();
+      const getOptionPrice = httpsCallable(functions, 'getOptionPrice');
+      const updated: { [id: string]: number } = {};
+      const today = new Date().toISOString().split('T')[0];
 
-    for (const position of positions) {
-      try {
-        const result = await getOptionPrice({
-          ticker: position.ticker,
-          optionType: position.optionType,
-          strike: position.strike,
-          expiry: position.expiry
-        }) as any;
-        updated[position.id!] = result.data.currentValue * position.contracts;
-      } catch {
-        updated[position.id!] = position.costBasis;
+      for (const position of positions) {
+        try {
+          const result = await getOptionPrice({
+            ticker: position.ticker,
+            optionType: position.optionType,
+            strike: position.strike,
+            expiry: position.expiry
+          }) as any;
+          const currentVal = result.data.currentValue * position.contracts;
+          updated[position.id!] = currentVal;
+          // Save price back to Firestore
+          await updatePosition(position.id!, {
+            currentValue: currentVal,
+            lastPriceDate: today
+          });
+        } catch {
+          updated[position.id!] = position.costBasis;
+        }
       }
-    }
 
-    setCurrentValues(updated);
-    setRefreshing(false);
-  };
+      setCurrentValues(updated);
+      setRefreshing(false);
+    };
 
   const accounts = ['ALL', ...new Set(positions.map(p => p.account))];
   const filtered = accountFilter === 'ALL' ? positions : positions.filter(p => p.account === accountFilter);
@@ -113,7 +129,46 @@ function Positions() {
                 </tr>
               );
             })}
-          </tbody>
+        </tbody>
+          <tfoot>
+            <tr style={{ backgroundColor: '#2a2a3e' }}>
+              <td style={styles.td} colSpan={5}><strong>TOTAL</strong></td>
+              <td style={styles.td}>
+                <strong>
+                  {filtered.reduce((sum, p) => sum + p.contracts, 0)}
+                </strong>
+              </td>
+              <td style={styles.td}>
+                <strong>
+                  {formatCurrency(filtered.reduce((sum, p) => sum + p.costBasis, 0))}
+                </strong>
+              </td>
+              <td style={styles.td}>
+                <strong>
+                  {formatCurrency(filtered.reduce((sum, p) => sum + (currentValues[p.id!] ?? p.costBasis), 0))}
+                </strong>
+              </td>
+              <td style={{ ...styles.td, color: filtered.reduce((sum, p) => sum + ((currentValues[p.id!] ?? p.costBasis) - p.costBasis), 0) >= 0 ? '#00ff88' : '#ff4444' }}>
+                <strong>
+                  {formatCurrency(filtered.reduce((sum, p) => sum + ((currentValues[p.id!] ?? p.costBasis) - p.costBasis), 0))}
+                </strong>
+              </td>
+              <td style={{ ...styles.td, color: (() => {
+                const totalCost = filtered.reduce((sum, p) => sum + p.costBasis, 0);
+                const totalVal = filtered.reduce((sum, p) => sum + (currentValues[p.id!] ?? p.costBasis), 0);
+                return totalCost > 0 ? ((totalVal - totalCost) / totalCost) * 100 : 0;
+              })() >= 0 ? '#00ff88' : '#ff4444' }}>
+                <strong>
+                  {formatPct((() => {
+                    const totalCost = filtered.reduce((sum, p) => sum + p.costBasis, 0);
+                    const totalVal = filtered.reduce((sum, p) => sum + (currentValues[p.id!] ?? p.costBasis), 0);
+                    return totalCost > 0 ? ((totalVal - totalCost) / totalCost) * 100 : 0;
+                  })())}
+                </strong>
+              </td>
+              <td style={styles.td}></td>
+            </tr>
+          </tfoot>
         </table>
       </div>
 

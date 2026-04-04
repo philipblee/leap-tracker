@@ -13,6 +13,8 @@ export interface Position {
   buyDate: string;
   account: Account;
   isOpen: boolean;
+  currentValue?: number;
+  lastPriceDate?: string;
   sellDate?: string;
   sellPrice?: number;
   contractsSold?: number;

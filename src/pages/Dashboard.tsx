@@ -32,8 +32,13 @@ function Dashboard() {
 
   if (loading) return <p style={{ color: '#fff' }}>Loading...</p>;
 
-  // Use latest snapshot values or calculate from positions
-  const summary = calcPortfolioSummary(openPositions, closedPositions, {});
+  // Build currentValues map from stored prices in Firestore
+    const currentValues = openPositions.reduce((acc, p) => {
+      if (p.currentValue) acc[p.id!] = p.currentValue;
+      return acc;
+    }, {} as { [id: string]: number });
+
+    const summary = calcPortfolioSummary(openPositions, closedPositions, currentValues);
 
   // Chart data from snapshots
   const chartData = snapshots.map(s => ({

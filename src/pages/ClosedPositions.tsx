@@ -82,7 +82,53 @@ function ClosedPositions() {
                 </tr>
               );
             })}
-          </tbody>
+        </tbody>
+          <tfoot>
+            <tr style={{ backgroundColor: '#2a2a3e' }}>
+              <td style={styles.td} colSpan={5}><strong>TOTAL</strong></td>
+              <td style={styles.td}>
+                <strong>
+                  {filtered.reduce((sum, p) => sum + (p.contractsSold ?? p.contracts), 0)}
+                </strong>
+              </td>
+              <td style={styles.td}>
+                <strong>
+                  {formatCurrency(filtered.reduce((sum, p) => sum + p.costBasis, 0))}
+                </strong>
+              </td>
+              <td style={styles.td}>
+                <strong>
+                  {formatCurrency(filtered.reduce((sum, p) => sum + (p.sellPrice ?? 0), 0))}
+                </strong>
+              </td>
+              <td style={styles.td}></td>
+              <td style={styles.td}></td>
+              <td style={{ ...styles.td, color: filtered.reduce((sum, p) => sum + calcRealizedPnl(p), 0) >= 0 ? '#00ff88' : '#ff4444' }}>
+                <strong>
+                  {formatCurrency(filtered.reduce((sum, p) => sum + calcRealizedPnl(p), 0))}
+                </strong>
+              </td>
+              <td style={{ ...styles.td, color: (() => {
+                const totalCost = filtered.reduce((sum, p) => {
+                  const costPerContract = p.costBasis / p.contracts;
+                  return sum + (costPerContract * (p.contractsSold ?? p.contracts));
+                }, 0);
+                const totalPnl = filtered.reduce((sum, p) => sum + calcRealizedPnl(p), 0);
+                return totalCost > 0 ? (totalPnl / totalCost) * 100 : 0;
+              })() >= 0 ? '#00ff88' : '#ff4444' }}>
+                <strong>
+                  {formatPct((() => {
+                    const totalCost = filtered.reduce((sum, p) => {
+                      const costPerContract = p.costBasis / p.contracts;
+                      return sum + (costPerContract * (p.contractsSold ?? p.contracts));
+                    }, 0);
+                    const totalPnl = filtered.reduce((sum, p) => sum + calcRealizedPnl(p), 0);
+                    return totalCost > 0 ? (totalPnl / totalCost) * 100 : 0;
+                  })())}
+                </strong>
+              </td>
+            </tr>
+          </tfoot>
         </table>
       </div>
     </div>
