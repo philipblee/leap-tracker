@@ -32,6 +32,9 @@ function Positions() {
 
   useEffect(() => { load(); }, []);
 
+    const [sortColumn, setSortColumn] = useState<string>('');
+    const [sortDirection, setSortDirection] = useState<'asc' | 'desc'>('asc');
+
     const handleRefresh = async () => {
       setRefreshing(true);
       const functions = getFunctions();
@@ -66,6 +69,43 @@ function Positions() {
   const accounts = ['ALL', ...new Set(positions.map(p => p.account))];
   const filtered = accountFilter === 'ALL' ? positions : positions.filter(p => p.account === accountFilter);
 
+  const handleSort = (column: string) => {
+  if (sortColumn === column) {
+    setSortDirection(prev => prev === 'asc' ? 'desc' : 'asc');
+  } else {
+    setSortColumn(column);
+    setSortDirection('asc');
+  }
+  };
+
+  const sorted = [...filtered].sort((a, b) => {
+    if (!sortColumn) return 0;
+    let aVal: any, bVal: any;
+    switch (sortColumn) {
+      case 'Ticker': aVal = a.ticker; bVal = b.ticker; break;
+      case 'Account': aVal = a.account; bVal = b.account; break;
+      case 'Buy Date': aVal = new Date(a.buyDate).getTime(); bVal = new Date(b.buyDate).getTime(); break;
+      case 'Expiry': aVal = new Date(a.expiry).getTime(); bVal = new Date(b.expiry).getTime(); break;
+      case 'P&L $':
+        aVal = (currentValues[a.id!] ?? a.costBasis) - a.costBasis;
+        bVal = (currentValues[b.id!] ?? b.costBasis) - b.costBasis;
+        break;
+      case 'Cost Basis': aVal = a.costBasis; bVal = b.costBasis; break;
+      case 'Current Value':
+        aVal = currentValues[a.id!] ?? a.costBasis;
+        bVal = currentValues[b.id!] ?? b.costBasis;
+        break;
+      case 'P&L %':
+        aVal = a.costBasis > 0 ? ((currentValues[a.id!] ?? a.costBasis) - a.costBasis) / a.costBasis : 0;
+        bVal = b.costBasis > 0 ? ((currentValues[b.id!] ?? b.costBasis) - b.costBasis) / b.costBasis : 0;
+        break;
+      default: return 0;
+      }
+    if (aVal < bVal) return sortDirection === 'asc' ? -1 : 1;
+    if (aVal > bVal) return sortDirection === 'asc' ? 1 : -1;
+    return 0;
+    });
+
   if (loading) return <p style={{ color: '#fff' }}>Loading...</p>;
 
   return (
@@ -94,12 +134,15 @@ function Positions() {
           <thead>
             <tr>
               {['Account','Ticker','Type','Strike','Expiry','Buy Date','Contracts','Current Value','Cost Basis','P&L $','P&L %','Actions'].map(h => (
-                <th key={h} style={styles.th}>{h}</th>
+                <th key={h} style={{ ...styles.th, cursor: ['Account','Ticker','Expiry','Buy Date','Current Value','Cost Basis','P&L $', 'P&L %'].includes(h) ? 'pointer' : 'default' }}
+                  onClick={() => ['Account','Ticker','Expiry','Buy Date','Current Value','Cost Basis','P&L $','P&L %'].includes(h) ? handleSort(h) : null}>
+                  {h} {sortColumn === h ? (sortDirection === 'asc' ? '↑' : '↓') : ''}
+                </th>
               ))}
             </tr>
           </thead>
           <tbody>
-            {filtered.map(p => {
+            {sorted.map(p => {
               const currentVal = currentValues[p.id!] ?? null;
               const pnl = currentVal !== null ? currentVal - p.costBasis : null;
               const pnlPct = currentVal !== null && p.costBasis > 0
