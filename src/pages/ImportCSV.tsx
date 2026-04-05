@@ -40,11 +40,20 @@ function ImportCSV() {
       } else {
         const openPositions = await getOpenPositions();
         for (const row of preview as SellCSVRow[]) {
+          const normalizeDate = (date: string) => {
+            if (!date) return '';
+            if (date.includes('/')) {
+              const [month, day, year] = date.split('/');
+              return `${year}-${month.padStart(2,'0')}-${day.padStart(2,'0')}`;
+            }
+            return date;
+          };
+
           const match = openPositions.find(p =>
             p.ticker === row.ticker.toUpperCase() &&
             p.optionType === row.type.toUpperCase() &&
             p.strike === Number(row.strike) &&
-            p.expiry === row.expiry
+            normalizeDate(p.expiry) === normalizeDate(row.expiry)
           );
           if (match && match.id) {
             await closePosition(

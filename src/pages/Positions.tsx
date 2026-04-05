@@ -5,6 +5,7 @@ import { formatCurrency, formatPct } from '../utils/calculations';
 import { getFunctions, httpsCallable } from 'firebase/functions';
 import AddPositionModal from '../components/AddPositionModal';
 import ClosePositionModal from '../components/ClosePositionModal';
+import PositionDetailModal from '../components/PositionDetailModal';
 
 
 function Positions() {
@@ -15,6 +16,7 @@ function Positions() {
   const [accountFilter, setAccountFilter] = useState('ALL');
   const [showAddModal, setShowAddModal] = useState(false);
   const [selectedPosition, setSelectedPosition] = useState<Position | null>(null);
+  const [detailPosition, setDetailPosition] = useState<Position | null>(null);
 
   const load = async () => {
     const data = await getOpenPositions();
@@ -150,7 +152,7 @@ function Positions() {
                 : null;
 
               return (
-                <tr key={p.id} style={styles.tr}>
+                <tr key={p.id} style={{ ...styles.tr, cursor: 'pointer' }} onClick={() => setDetailPosition(p)}>
                   <td style={styles.td}>{p.account}</td>
                   <td style={styles.td}>{p.ticker}</td>
                   <td style={styles.td}>{p.optionType}</td>
@@ -228,6 +230,14 @@ function Positions() {
           position={selectedPosition}
           onClose={() => setSelectedPosition(null)}
           onSaved={() => { setSelectedPosition(null); load(); }}
+        />
+      )}
+      {detailPosition && (
+        <PositionDetailModal
+          position={detailPosition}
+          currentValue={currentValues[detailPosition.id!]}
+          onClose={() => setDetailPosition(null)}
+          onSaved={() => { setDetailPosition(null); load(); }}
         />
       )}
     </div>
