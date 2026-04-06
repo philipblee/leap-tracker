@@ -1,8 +1,8 @@
 import { useState } from 'react';
 import { updatePosition } from '../services/positionService';
-import { updateLot } from '../services/lotService';
 import { formatCurrency, formatPct, formatDate } from '../utils/calculations';
 import type { Lot, PositionSummary } from '../types';
+import { updateLot, deleteLot } from '../services/lotService';
 
 interface Props {
   summary: PositionSummary;
@@ -249,6 +249,14 @@ function PositionDetailModal({ summary, onClose, onSaved }: Props) {
                           </td>
                           <td style={styles.lotTd}>
                             <button style={styles.lotEditBtn} onClick={() => startEditLot(lot)}>Edit</button>
+                            <button style={{ ...styles.lotCancelBtn, marginLeft: '4px', backgroundColor: '#ff4444' }}
+                              onClick={async () => {
+                                if (confirm(`Delete this closed lot?`)) {
+                                  await deleteLot(lot.id!);
+                                  setLocalLots(prev => prev.filter(l => l.id !== lot.id));
+                                  onSaved(); // add this line
+                                }
+                              }}>Delete</button>
                           </td>
                         </tr>
                       )

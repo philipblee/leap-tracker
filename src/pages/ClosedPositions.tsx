@@ -21,15 +21,14 @@ function ClosedPositions() {
   const [sortDirection, setSortDirection] = useState<'asc' | 'desc'>('asc');
   const [detailSummary, setDetailSummary] = useState<PositionSummary | null>(null);
 
-  useEffect(() => {
-    const load = async () => {
-      const [positions, lots] = await Promise.all([getAllPositions(), getAllLots()]);
-      const all = getPositionSummaries(positions, lots);
-      setSummaries(all.filter(s => s.lots.some(l => !l.isOpen)));
-      setLoading(false);
-    };
-    load();
-  }, []);
+  const load = async () => {
+    const [positions, lots] = await Promise.all([getAllPositions(), getAllLots()]);
+    const all = getPositionSummaries(positions, lots);
+    setSummaries(all.filter(s => s.lots.some(l => !l.isOpen)));
+    setLoading(false);
+  };
+
+  useEffect(() => { load(); }, []);
 
   const accounts = ['ALL', ...new Set(summaries.map(s => s.position.account))];
   const years = ['ALL', ...[...new Set(
@@ -192,14 +191,15 @@ function ClosedPositions() {
             </tr>
           </tfoot>
         </table>
-        {detailSummary && (
-          <PositionDetailModal
-            summary={detailSummary}
-            onClose={() => setDetailSummary(null)}
-            onSaved={() => { setDetailSummary(null); }}
-          />
-        )}
       </div>
+
+      {detailSummary && (
+        <PositionDetailModal
+          summary={detailSummary}
+          onClose={() => setDetailSummary(null)}
+          onSaved={() => { setDetailSummary(null); load(); }}
+        />
+      )}
     </div>
   );
 }
