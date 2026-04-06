@@ -1,54 +1,45 @@
 import { useState, useEffect } from 'react';
-import { getOpenPositions, getClosedPositions } from '../services/positionService';
+import { getAllPositions, getPositionSummaries } from '../services/positionService';
+import { getAllLots } from '../services/lotService';
 import { getSnapshots } from '../services/snapshotService';
 import { calcPortfolioSummary, formatCurrency, formatPct } from '../utils/calculations';
-import type { Position, Snapshot } from '../types';
+import type { Snapshot } from '../types';
 import {
   LineChart, Line, XAxis, YAxis, CartesianGrid,
   Tooltip, Legend, ResponsiveContainer
 } from 'recharts';
 
 function Dashboard() {
-  const [openPositions, setOpenPositions] = useState<Position[]>([]);
-  const [closedPositions, setClosedPositions] = useState<Position[]>([]);
+  const [summary, setSummary] = useState<ReturnType<typeof calcPortfolioSummary> | null>(null);
   const [snapshots, setSnapshots] = useState<Snapshot[]>([]);
   const [chartView, setChartView] = useState<'dollar' | 'percent'>('dollar');
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
     const load = async () => {
-      const [open, closed, snaps] = await Promise.all([
-        getOpenPositions(),
-        getClosedPositions(),
+      const [positions, lots, snaps] = await Promise.all([
+        getAllPositions(),
+        getAllLots(),
         getSnapshots()
       ]);
-      setOpenPositions(open);
-      setClosedPositions(closed);
+      const summaries = getPositionSummaries(positions, lots);
+      setSummary(calcPortfolioSummary(summaries));
       setSnapshots(snaps);
       setLoading(false);
     };
     load();
   }, []);
 
-  if (loading) return <p style={{ color: '#fff' }}>Loading...</p>;
+  if (loading || !summary) return <p style={{ color: '#fff' }}>Loading...</p>;
 
-  // Build currentValues map from stored prices in Firestore
-    const currentValues = openPositions.reduce((acc, p) => {
-      if (p.currentValue) acc[p.id!] = p.currentValue;
-      return acc;
-    }, {} as { [id: string]: number });
-
-    const summary = calcPortfolioSummary(openPositions, closedPositions, currentValues);
-
-  // Chart data from snapshots
   const chartData = snapshots.map(s => ({
     date: s.date,
     'Unrealized $': parseFloat(s.unrealizedPnl.toFixed(2)),
-    'Realized $': parseFloat(s.realizedPnl.toFixed(2)),
-    'Total $': parseFloat(s.totalPnl.toFixed(2)),
+    'Realized $':   parseFloat(s.realizedPnl.toFixed(2)),
+    'Total $':      parseFloat(s.totalPnl.toFixed(2)),
     'Unrealized %': parseFloat(s.unrealizedPct.toFixed(2)),
-    'Realized %': parseFloat(s.realizedPct.toFixed(2)),
-    'Total %': parseFloat(s.totalPct.toFixed(2)),
+    'Realized %':   parseFloat(s.realizedPct.toFixed(2)),
+    'Total %':      parseFloat(s.totalPct.toFixed(2)),
   }));
 
   const isDollar = chartView === 'dollar';
@@ -57,16 +48,9 @@ function Dashboard() {
     <div>
       <h2 style={styles.heading}>Portfolio Summary</h2>
 
-      {/* Summary Cards */}
       <div style={styles.cards}>
-        <SummaryCard
-          title="Total Invested"
-          value={formatCurrency(summary.totalCostBasis)}
-        />
-        <SummaryCard
-          title="Current Value"
-          value={formatCurrency(summary.totalCurrentValue)}
-        />
+        <SummaryCard title="Total Invested"  value={formatCurrency(summary.totalCostBasis)} />
+        <SummaryCard title="Current Value"   value={formatCurrency(summary.totalCurrentValue)} />
         <SummaryCard
           title="Unrealized P&L"
           value={formatCurrency(summary.unrealizedPnl)}
@@ -87,7 +71,6 @@ function Dashboard() {
         />
       </div>
 
-      {/* Chart */}
       <div style={styles.chartContainer}>
         <div style={styles.chartHeader}>
           <h3 style={{ color: '#fff', margin: 0 }}>Portfolio P&L Over Time</h3>
@@ -114,8 +97,8 @@ function Dashboard() {
               <Tooltip contentStyle={{ backgroundColor: '#1a1a2e', border: 'none' }} />
               <Legend />
               <Line type="monotone" dataKey={isDollar ? 'Unrealized $' : 'Unrealized %'} stroke="#00d4ff" dot={false} />
-              <Line type="monotone" dataKey={isDollar ? 'Realized $' : 'Realized %'} stroke="#00ff88" dot={false} />
-              <Line type="monotone" dataKey={isDollar ? 'Total $' : 'Total %'} stroke="#ff6b6b" dot={false} />
+              <Line type="monotone" dataKey={isDollar ? 'Realized $'   : 'Realized %'}   stroke="#00ff88" dot={false} />
+              <Line type="monotone" dataKey={isDollar ? 'Total $'      : 'Total %'}      stroke="#ff6b6b" dot={false} />
             </LineChart>
           </ResponsiveContainer>
         )}
@@ -124,12 +107,8 @@ function Dashboard() {
   );
 }
 
-// Summary Card Component
 function SummaryCard({ title, value, sub, positive }: {
-  title: string;
-  value: string;
-  sub?: string;
-  positive?: boolean;
+  title: string; value: string; sub?: string; positive?: boolean;
 }) {
   return (
     <div style={styles.card}>
@@ -145,35 +124,14 @@ function SummaryCard({ title, value, sub, positive }: {
 const styles: { [key: string]: React.CSSProperties } = {
   heading: { color: '#fff', marginBottom: '20px' },
   cards: { display: 'flex', gap: '16px', flexWrap: 'wrap', marginBottom: '32px' },
-  card: {
-    backgroundColor: '#1a1a2e',
-    padding: '20px',
-    borderRadius: '12px',
-    minWidth: '180px',
-    flex: '1'
-  },
+  card: { backgroundColor: '#1a1a2e', padding: '20px', borderRadius: '12px', minWidth: '180px', flex: '1' },
   cardTitle: { color: '#aaa', margin: '0 0 8px 0', fontSize: '14px' },
   cardValue: { margin: '0', fontSize: '24px', fontWeight: 'bold' },
   cardSub: { margin: '4px 0 0 0', fontSize: '14px' },
-  chartContainer: {
-    backgroundColor: '#1a1a2e',
-    padding: '24px',
-    borderRadius: '12px'
-  },
-  chartHeader: {
-    display: 'flex',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    marginBottom: '20px'
-  },
+  chartContainer: { backgroundColor: '#1a1a2e', padding: '24px', borderRadius: '12px' },
+  chartHeader: { display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '20px' },
   toggle: { display: 'flex', gap: '8px' },
-  toggleBtn: {
-    padding: '8px 16px',
-    border: 'none',
-    borderRadius: '6px',
-    cursor: 'pointer',
-    fontWeight: 'bold'
-  }
+  toggleBtn: { padding: '8px 16px', border: 'none', borderRadius: '6px', cursor: 'pointer', fontWeight: 'bold' }
 };
 
 export default Dashboard;

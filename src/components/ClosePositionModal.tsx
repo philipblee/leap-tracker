@@ -1,19 +1,21 @@
 import { useState } from 'react';
-import { closePosition } from '../services/positionService';
-import type { Position } from '../types';
+import { closeLotsFIFO } from '../services/lotService';
+import { updatePosition } from '../services/positionService';
+import type { PositionSummary } from '../types';
 import { formatCurrency } from '../utils/calculations';
 
 interface Props {
-  position: Position;
+  summary: PositionSummary;
   onClose: () => void;
   onSaved: () => void;
 }
 
-function ClosePositionModal({ position, onClose, onSaved }: Props) {
+function ClosePositionModal({ summary, onClose, onSaved }: Props) {
+  const { position } = summary;
   const [form, setForm] = useState({
     sellDate: '',
     sellPrice: '',
-    contractsSold: String(position.contracts)
+    contractsSold: String(summary.openContracts)
   });
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
@@ -27,19 +29,18 @@ function ClosePositionModal({ position, onClose, onSaved }: Props) {
       setError('All fields are required');
       return;
     }
-    if (Number(form.contractsSold) > position.contracts) {
-      setError(`Cannot sell more than ${position.contracts} contracts`);
+    const contracts = Number(form.contractsSold);
+    if (contracts > summary.openContracts) {
+      setError(`Cannot sell more than ${summary.openContracts} open contracts`);
       return;
     }
     setSaving(true);
     try {
-      await closePosition(
-        position.id!,
-        form.sellDate,
-        Number(form.sellPrice),
-        Number(form.contractsSold),
-        position.contracts
-      );
+      await closeLotsFIFO(position.id!, contracts, form.sellDate, Number(form.sellPrice));
+      // Mark position closed if all open contracts are being sold
+      if (contracts >= summary.openContracts) {
+        await updatePosition(position.id!, { isOpen: false });
+      }
       onSaved();
     } catch (err) {
       setError('Error closing position');
@@ -47,8 +48,12 @@ function ClosePositionModal({ position, onClose, onSaved }: Props) {
     setSaving(false);
   };
 
-  const previewPnl = form.sellPrice
-    ? Number(form.sellPrice) - (position.costBasis / position.contracts) * Number(form.contractsSold)
+  // Preview P&L using average cost per contract across all open lots
+  const avgCostPerContract = summary.openContracts > 0
+    ? summary.totalCostBasis / summary.openContracts
+    : 0;
+  const previewPnl = form.sellPrice && form.contractsSold
+    ? Number(form.sellPrice) - avgCostPerContract * Number(form.contractsSold)
     : null;
 
   return (
@@ -56,13 +61,13 @@ function ClosePositionModal({ position, onClose, onSaved }: Props) {
       <div style={styles.modal}>
         <h3 style={styles.title}>Close Position</h3>
 
-        {/* Position Summary */}
         <div style={styles.summary}>
           <span style={styles.summaryItem}>{position.ticker}</span>
           <span style={styles.summaryItem}>{position.optionType}</span>
           <span style={styles.summaryItem}>Strike: ${position.strike}</span>
           <span style={styles.summaryItem}>Expiry: {position.expiry}</span>
-          <span style={styles.summaryItem}>Cost Basis: {formatCurrency(position.costBasis)}</span>
+          <span style={styles.summaryItem}>Open: {summary.openContracts} contracts</span>
+          <span style={styles.summaryItem}>Cost Basis: {formatCurrency(summary.totalCostBasis)}</span>
         </div>
 
         {error && <p style={styles.error}>{error}</p>}
@@ -76,7 +81,7 @@ function ClosePositionModal({ position, onClose, onSaved }: Props) {
             onChange={handleChange}
             type="number"
             min="1"
-            max={position.contracts}
+            max={summary.openContracts}
           />
 
           <label style={styles.label}>Sell Price ($)</label>
@@ -99,7 +104,6 @@ function ClosePositionModal({ position, onClose, onSaved }: Props) {
           />
         </div>
 
-        {/* P&L Preview */}
         {previewPnl !== null && (
           <div style={styles.pnlPreview}>
             <span style={styles.pnlLabel}>Estimated Realized P&L:</span>
@@ -129,7 +133,7 @@ const styles: { [key: string]: React.CSSProperties } = {
   },
   modal: {
     backgroundColor: '#1a1a2e', padding: '32px', borderRadius: '16px',
-    width: '480px', maxWidth: '90vw'
+    width: '520px', maxWidth: '90vw'
   },
   title: { color: '#fff', margin: '0 0 20px 0' },
   summary: {

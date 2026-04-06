@@ -9,63 +9,98 @@ import {
   where
 } from 'firebase/firestore';
 import { db } from './firebase';
-import type { Position } from '../types';
+import type { Lot, Position, PositionSummary } from '../types';
 
 const COLLECTION = 'positions';
 
-// Get all open positions
+export const getAllPositions = async (): Promise<Position[]> => {
+  const snapshot = await getDocs(collection(db, COLLECTION));
+  return snapshot.docs.map(d => ({ id: d.id, ...d.data() } as Position));
+};
+
 export const getOpenPositions = async (): Promise<Position[]> => {
   const q = query(collection(db, COLLECTION), where('isOpen', '==', true));
   const snapshot = await getDocs(q);
-  return snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Position));
+  return snapshot.docs.map(d => ({ id: d.id, ...d.data() } as Position));
 };
 
-// Get all closed positions
 export const getClosedPositions = async (): Promise<Position[]> => {
   const q = query(collection(db, COLLECTION), where('isOpen', '==', false));
   const snapshot = await getDocs(q);
-  return snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Position));
+  return snapshot.docs.map(d => ({ id: d.id, ...d.data() } as Position));
 };
 
-// Add a single position
-export const addPosition = async (position: Position): Promise<string> => {
+export const addPosition = async (position: Omit<Position, 'id'>): Promise<string> => {
   const docRef = await addDoc(collection(db, COLLECTION), position);
   return docRef.id;
 };
 
-// Update a position
 export const updatePosition = async (id: string, updates: Partial<Position>): Promise<void> => {
-  const docRef = doc(db, COLLECTION, id);
-  await updateDoc(docRef, updates);
+  await updateDoc(doc(db, COLLECTION, id), updates);
 };
 
-// Delete a position
 export const deletePosition = async (id: string): Promise<void> => {
-  const docRef = doc(db, COLLECTION, id);
-  await deleteDoc(docRef);
+  await deleteDoc(doc(db, COLLECTION, id));
 };
 
-// Close a position (full or partial)
-export const closePosition = async (
-  id: string,
-  sellDate: string,
-  sellPrice: number,
-  contractsSold: number,
-  totalContracts: number
-): Promise<void> => {
-  const realizedPnl = sellPrice - (contractsSold / totalContracts);
-  const isFullClose = contractsSold === totalContracts;
-  await updatePosition(id, {
-    isOpen: !isFullClose,
-    sellDate,
-    sellPrice,
-    contractsSold,
-    realizedPnl
+// Find a position matching the option symbol + account, or create one if it doesn't exist.
+// Returns the positionId.
+export const findOrCreatePosition = async (
+  ticker: string,
+  optionType: Position['optionType'],
+  strike: number,
+  expiry: string,
+  account: string
+): Promise<string> => {
+  const q = query(
+    collection(db, COLLECTION),
+    where('ticker', '==', ticker),
+    where('optionType', '==', optionType),
+    where('strike', '==', strike),
+    where('expiry', '==', expiry),
+    where('account', '==', account)
+  );
+  const snapshot = await getDocs(q);
+  if (!snapshot.empty) {
+    return snapshot.docs[0].id;
+  }
+  return addPosition({ ticker, optionType, strike, expiry, account, isOpen: true });
+};
+
+// Aggregate lot data into a PositionSummary for each position.
+// position.currentValue is expected to be per-contract market value (lastPrice * 100),
+// so total current value = currentValue * openContracts.
+export const getPositionSummaries = (
+  positions: Position[],
+  lots: Lot[]
+): PositionSummary[] => {
+  return positions.map(position => {
+    const positionLots = lots.filter(l => l.positionId === position.id);
+    const openLots = positionLots.filter(l => l.isOpen);
+    const closedLots = positionLots.filter(l => !l.isOpen);
+
+    const openContracts = openLots.reduce((sum, l) => sum + l.contracts, 0);
+    const totalCostBasis = openLots.reduce((sum, l) => sum + l.costBasis, 0);
+
+    const currentValue = position.currentValue != null
+      ? position.currentValue * openContracts
+      : null;
+    const unrealizedPnl = currentValue != null ? currentValue - totalCostBasis : null;
+    const unrealizedPct = unrealizedPnl != null && totalCostBasis > 0
+      ? (unrealizedPnl / totalCostBasis) * 100
+      : null;
+
+    const realizedPnl = closedLots.reduce((sum, l) => sum + (l.realizedPnl ?? 0), 0);
+
+    return {
+      position,
+      lots: positionLots,
+      openContracts,
+      totalCostBasis,
+      currentValue,
+      unrealizedPnl,
+      unrealizedPct,
+      realizedPnl
+    };
   });
-};
-
-// Bulk add positions (CSV import)
-export const bulkAddPositions = async (positions: Position[]): Promise<void> => {
-  const promises = positions.map(p => addPosition(p));
-  await Promise.all(promises);
 };

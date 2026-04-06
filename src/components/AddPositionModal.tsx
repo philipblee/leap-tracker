@@ -1,6 +1,7 @@
 import { useState } from 'react';
-import { addPosition } from '../services/positionService';
-import type { Position, OptionType } from '../types';
+import { findOrCreatePosition } from '../services/positionService';
+import { addLot } from '../services/lotService';
+import type { OptionType } from '../types';
 
 interface Props {
   onClose: () => void;
@@ -32,18 +33,21 @@ function AddPositionModal({ onClose, onSaved }: Props) {
     }
     setSaving(true);
     try {
-      const position: Position = {
-        ticker: form.ticker.toUpperCase(),
-        optionType: form.optionType,
-        strike: Number(form.strike),
-        expiry: form.expiry,
+      // Find existing position for this symbol+account, or create a new one
+      const positionId = await findOrCreatePosition(
+        form.ticker.toUpperCase(),
+        form.optionType,
+        Number(form.strike),
+        form.expiry,
+        form.account
+      );
+      await addLot({
+        positionId,
+        buyDate: form.buyDate,
         contracts: Number(form.contracts),
         costBasis: Number(form.costBasis),
-        buyDate: form.buyDate,
-        account: form.account,
         isOpen: true
-      };
-      await addPosition(position);
+      });
       onSaved();
     } catch (err) {
       setError('Error saving position');

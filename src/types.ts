@@ -8,17 +8,38 @@ export interface Position {
   optionType: OptionType;
   strike: number;
   expiry: string;
-  contracts: number;
-  costBasis: number;
-  buyDate: string;
   account: Account;
   isOpen: boolean;
   currentValue?: number;
   lastPriceDate?: string;
+}
+
+export interface Lot {
+  id?: string;
+  positionId: string;
+  buyDate: string;
+  contracts: number;
+  costBasis: number;
+  isOpen: boolean;
   sellDate?: string;
   sellPrice?: number;
   contractsSold?: number;
   realizedPnl?: number;
+}
+
+// Aggregated view of a Position + its Lots, used for display
+export interface PositionSummary {
+  position: Position;
+  lots: Lot[];
+  // Open lot aggregates
+  openContracts: number;
+  totalCostBasis: number;        // sum of costBasis across open lots
+  // Current market value (from position.currentValue, per-contract basis × openContracts)
+  currentValue: number | null;
+  unrealizedPnl: number | null;
+  unrealizedPct: number | null;
+  // Closed lot aggregates
+  realizedPnl: number;
 }
 
 export interface Snapshot {
