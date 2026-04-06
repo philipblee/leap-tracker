@@ -3,11 +3,12 @@ import { getAllPositions, getPositionSummaries } from '../services/positionServi
 import { getAllLots } from '../services/lotService';
 import type { PositionSummary } from '../types';
 import { formatCurrency, formatPct, formatDate } from '../utils/calculations';
+import PositionDetailModal from '../components/PositionDetailModal';
 
 const getYear = (dateStr: string): string => {
   if (!dateStr) return '';
-  if (dateStr.includes('-')) return dateStr.split('-')[0];   // YYYY-MM-DD
-  if (dateStr.includes('/')) return dateStr.split('/')[2];   // MM/DD/YYYY
+  if (dateStr.includes('-')) return dateStr.split('-')[0];
+  if (dateStr.includes('/')) return dateStr.split('/')[2];
   return '';
 };
 
@@ -16,20 +17,19 @@ function ClosedPositions() {
   const [loading, setLoading] = useState(true);
   const [accountFilter, setAccountFilter] = useState('ALL');
   const [yearFilter, setYearFilter] = useState('ALL');
+  const [sortColumn, setSortColumn] = useState<string>('');
+  const [sortDirection, setSortDirection] = useState<'asc' | 'desc'>('asc');
 
   useEffect(() => {
     const load = async () => {
-      // Load ALL positions so partially-closed ones (isOpen: true with closed lots) appear here
       const [positions, lots] = await Promise.all([getAllPositions(), getAllLots()]);
       const all = getPositionSummaries(positions, lots);
-      // Only keep summaries that have at least one closed lot
       setSummaries(all.filter(s => s.lots.some(l => !l.isOpen)));
       setLoading(false);
     };
     load();
   }, []);
 
-  // Derive filter options from the full unfiltered set
   const accounts = ['ALL', ...new Set(summaries.map(s => s.position.account))];
   const years = ['ALL', ...[...new Set(
     summaries
@@ -40,6 +40,52 @@ function ClosedPositions() {
   const filtered = summaries
     .filter(s => accountFilter === 'ALL' || s.position.account === accountFilter)
     .filter(s => yearFilter === 'ALL' || s.lots.some(l => !l.isOpen && getYear(l.sellDate ?? '') === yearFilter));
+
+  const handleSort = (column: string) => {
+    if (sortColumn === column) {
+      setSortDirection(prev => prev === 'asc' ? 'desc' : 'asc');
+    } else {
+      setSortColumn(column);
+      setSortDirection('asc');
+    }
+  };
+
+  const sortableColumns = new Set(['Account', 'Ticker', 'Expiry', 'Cost Basis', 'Proceeds', 'Last Sell Date', 'Realized P&L $', 'Realized P&L %']);
+
+  const sorted = [...filtered].sort((a, b) => {
+    if (!sortColumn) return 0;
+    const aClosedLots = a.lots.filter(l => !l.isOpen);
+    const bClosedLots = b.lots.filter(l => !l.isOpen);
+    let aVal: any, bVal: any;
+    switch (sortColumn) {
+      case 'Ticker': aVal = a.position.ticker; bVal = b.position.ticker; break;
+      case 'Account': aVal = a.position.account; bVal = b.position.account; break;
+      case 'Expiry': aVal = new Date(a.position.expiry).getTime(); bVal = new Date(b.position.expiry).getTime(); break;
+      case 'Cost Basis':
+        aVal = aClosedLots.reduce((sum, l) => sum + l.costBasis, 0);
+        bVal = bClosedLots.reduce((sum, l) => sum + l.costBasis, 0);
+        break;
+      case 'Proceeds':
+        aVal = aClosedLots.reduce((sum, l) => sum + (l.sellPrice ?? 0), 0);
+        bVal = bClosedLots.reduce((sum, l) => sum + (l.sellPrice ?? 0), 0);
+        break;
+      case 'Last Sell Date':
+        aVal = aClosedLots.map(l => l.sellDate ?? '').filter(Boolean).sort().at(-1) ?? '';
+        bVal = bClosedLots.map(l => l.sellDate ?? '').filter(Boolean).sort().at(-1) ?? '';
+        break;
+      case 'Realized P&L $': aVal = a.realizedPnl; bVal = b.realizedPnl; break;
+      case 'Realized P&L %':
+        const aCost = aClosedLots.reduce((sum, l) => sum + l.costBasis, 0);
+        const bCost = bClosedLots.reduce((sum, l) => sum + l.costBasis, 0);
+        aVal = aCost > 0 ? (a.realizedPnl / aCost) * 100 : 0;
+        bVal = bCost > 0 ? (b.realizedPnl / bCost) * 100 : 0;
+        break;
+      default: return 0;
+    }
+    if (aVal < bVal) return sortDirection === 'asc' ? -1 : 1;
+    if (aVal > bVal) return sortDirection === 'asc' ? 1 : -1;
+    return 0;
+  });
 
   const totalRealized = filtered.reduce((sum, s) => sum + s.realizedPnl, 0);
   const totalClosedCost = filtered.reduce(
@@ -78,12 +124,18 @@ function ClosedPositions() {
           <thead>
             <tr>
               {['Account','Ticker','Type','Strike','Expiry','Contracts','Cost Basis','Proceeds','Last Sell Date','Realized P&L $','Realized P&L %'].map(h => (
-                <th key={h} style={styles.th}>{h}</th>
+                <th
+                  key={h}
+                  style={{ ...styles.th, cursor: sortableColumns.has(h) ? 'pointer' : 'default' }}
+                  onClick={() => sortableColumns.has(h) ? handleSort(h) : undefined}
+                >
+                  {h} {sortColumn === h ? (sortDirection === 'asc' ? '↑' : '↓') : ''}
+                </th>
               ))}
             </tr>
           </thead>
           <tbody>
-            {filtered.map(s => {
+            {sorted.map(s => {
               const { position } = s;
               const closedLots = s.lots.filter(l => !l.isOpen);
               const contractsSold = closedLots.reduce((sum, l) => sum + (l.contractsSold ?? l.contracts), 0);
