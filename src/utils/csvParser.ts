@@ -235,12 +235,15 @@ export const parseFidelityClosedCSV = (file: File): Promise<ParseResult<ClosedIm
           const costBasis = cleanNumber(row['Cost basis'] ?? '0');
           const proceeds = cleanNumber(row['Proceeds'] ?? '0');
 
+          console.log('Row keys:', Object.keys(row));
+          console.log('account value:', row['account']);
+
           valid.push({
             ticker: parsed.ticker,
             optionType: parsed.optionType,
             strike: parsed.strike,
             expiry: parsed.expiry,
-            account: row['Account']?.trim() ?? row['Account name']?.trim() ?? 'Unknown',
+            account: row['Account']?.trim() ?? row['account']?.trim() ?? row['Account name']?.trim() ?? 'Unknown',
             buyDate: row['Date acquired']?.trim() ?? '1900-01-01',
             contracts,
             costBasis,

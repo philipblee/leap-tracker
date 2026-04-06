@@ -20,6 +20,15 @@ function Positions() {
   const [selectedSummary, setSelectedSummary] = useState<PositionSummary | null>(null);
   const [detailSummary, setDetailSummary] = useState<PositionSummary | null>(null);
 
+  const handleDelete = (s: PositionSummary) => {
+    const { position, lots } = s;
+    const msg = lots.length > 0
+      ? `Delete ${position.ticker} ${position.optionType} $${position.strike} and its ${lots.length} lot(s)? This cannot be undone.`
+      : `Delete ${position.ticker} ${position.optionType} $${position.strike}?`;
+    if (!window.confirm(msg)) return;
+    deletePosition(position.id!).then(load);
+  };
+
   const load = async () => {
     const [positions, lots] = await Promise.all([getOpenPositions(), getAllLots()]);
     setSummaries(getPositionSummaries(positions, lots));
@@ -150,7 +159,7 @@ function Positions() {
                   </td>
                   <td style={styles.td} onClick={e => e.stopPropagation()}>
                     <button style={styles.closeBtn} onClick={() => setSelectedSummary(s)}>Close</button>
-                    <button style={styles.deleteBtn} onClick={() => deletePosition(position.id!).then(load)}>Delete</button>
+                    <button style={styles.deleteBtn} onClick={() => handleDelete(s)}>Delete</button>
                   </td>
                 </tr>
               );

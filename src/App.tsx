@@ -17,7 +17,7 @@ function App() {
       ) : (
         <>
           <NavBar />
-          <div style={{ padding: '20px', maxWidth: '1200px', margin: '0 auto' }}>
+          <div style={{ padding: '20px', maxWidth: '1600px', margin: '0 auto' }}>
             <Routes>
               <Route path="/" element={<Navigate to="/dashboard" />} />
               <Route path="/dashboard" element={<Dashboard />} />
