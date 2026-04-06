@@ -19,6 +19,7 @@ function ClosedPositions() {
   const [yearFilter, setYearFilter] = useState('ALL');
   const [sortColumn, setSortColumn] = useState<string>('');
   const [sortDirection, setSortDirection] = useState<'asc' | 'desc'>('asc');
+  const [detailSummary, setDetailSummary] = useState<PositionSummary | null>(null);
 
   useEffect(() => {
     const load = async () => {
@@ -149,7 +150,7 @@ function ClosedPositions() {
               const pct = costBasis > 0 ? (s.realizedPnl / costBasis) * 100 : 0;
 
               return (
-                <tr key={position.id} style={styles.tr}>
+                <tr key={position.id} style={{ ...styles.tr, cursor: 'pointer' }} onClick={() => setDetailSummary(s)}>
                   <td style={styles.td}>{position.account}</td>
                   <td style={styles.td}>{position.ticker}</td>
                   <td style={styles.td}>{position.optionType}</td>
@@ -191,6 +192,13 @@ function ClosedPositions() {
             </tr>
           </tfoot>
         </table>
+        {detailSummary && (
+          <PositionDetailModal
+            summary={detailSummary}
+            onClose={() => setDetailSummary(null)}
+            onSaved={() => { setDetailSummary(null); }}
+          />
+        )}
       </div>
     </div>
   );
