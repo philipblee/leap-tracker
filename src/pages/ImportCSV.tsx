@@ -22,13 +22,15 @@ function ImportCSV() {
   const [preview, setPreview] = useState<PreviewRow[]>([]);
   const [errors, setErrors] = useState<{ row: number; message: string }[]>([]);
   const [saving, setSaving] = useState(false);
-  const [saved, setSaved] = useState(false);
+  const [savedResult, setSavedResult] = useState<{ positions: number; lots: number; skipped: number } | null>(null);
+  const [showSkipped, setShowSkipped] = useState(false);
   const [detectedFormat, setDetectedFormat] = useState('');
 
   const handleFile = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
-    setSaved(false);
+    setSavedResult(null);
+    setShowSkipped(false);
     setPreview([]);
     setErrors([]);
     setDetectedFormat('');
@@ -59,10 +61,12 @@ function ImportCSV() {
 
   const handleConfirm = async () => {
     setSaving(true);
+    const skipped = errors.length;
     try {
       if (detectedFormat === 'fidelity_closed') {
-        // Each row is a fully-formed closed lot — find/create position, add as closed lot
-        for (const row of preview as ClosedImportRow[]) {
+        const rows = preview as ClosedImportRow[];
+        const uniqueKeys = new Set(rows.map(r => `${r.ticker}|${r.optionType}|${r.strike}|${r.expiry}|${r.account}`));
+        for (const row of rows) {
           const positionId = await findOrCreatePosition(
             row.ticker, row.optionType, row.strike, row.expiry, row.account
           );
@@ -77,12 +81,13 @@ function ImportCSV() {
             contractsSold: row.contractsSold,
             realizedPnl: row.realizedPnl
           });
-          // Ensure position is marked closed
           await updatePosition(positionId, { isOpen: false });
         }
+        setSavedResult({ positions: uniqueKeys.size, lots: rows.length, skipped });
       } else if (detectedFormat === 'fidelity' || detectedFormat === 'custom_buy' || mode === 'buy') {
-        // Open buy: find/create position, add open lot
-        for (const row of preview as BuyImportRow[]) {
+        const rows = preview as BuyImportRow[];
+        const uniqueKeys = new Set(rows.map(r => `${r.ticker}|${r.optionType}|${r.strike}|${r.expiry}|${r.account}`));
+        for (const row of rows) {
           const positionId = await findOrCreatePosition(
             row.ticker, row.optionType, row.strike, row.expiry, row.account
           );
@@ -93,15 +98,15 @@ function ImportCSV() {
             costBasis: row.costBasis,
             isOpen: true
           });
-          // Persist current value from Fidelity export if available
           if (row.currentValue) {
             const perContract = row.contracts > 0 ? row.currentValue / row.contracts : 0;
             await updatePosition(positionId, { currentValue: perContract });
           }
         }
+        setSavedResult({ positions: uniqueKeys.size, lots: rows.length, skipped });
       } else {
-        // Sell: find matching open position, close via FIFO
         const openPositions = await getOpenPositions();
+        let closed = 0;
         for (const row of preview as SellImportRow[]) {
           const match = openPositions.find(p =>
             p.ticker === row.ticker &&
@@ -111,10 +116,10 @@ function ImportCSV() {
           );
           if (!match?.id) continue;
           await closeLotsFIFO(match.id, row.contractsSold, row.sellDate, row.sellPrice);
-          // Caller must separately mark position closed if fully sold
+          closed++;
         }
+        setSavedResult({ positions: closed, lots: closed, skipped });
       }
-      setSaved(true);
       setPreview([]);
     } catch (err) {
       console.error(err);
@@ -272,7 +277,28 @@ function ImportCSV() {
         </div>
       )}
 
-      {saved && <p style={styles.success}>✅ Import successful!</p>}
+      {savedResult && (
+        <div style={styles.successBox}>
+          <p style={styles.success}>
+            ✅ Imported {savedResult.positions} position{savedResult.positions !== 1 ? 's' : ''}, {savedResult.lots} lot{savedResult.lots !== 1 ? 's' : ''} created.
+            {savedResult.skipped > 0 && <span> {savedResult.skipped} row{savedResult.skipped !== 1 ? 's' : ''} skipped.</span>}
+          </p>
+          {savedResult.skipped > 0 && errors.length > 0 && (
+            <div>
+              <button style={styles.toggleSkippedBtn} onClick={() => setShowSkipped(v => !v)}>
+                {showSkipped ? '▲ Hide skipped rows' : '▼ Show skipped rows'}
+              </button>
+              {showSkipped && (
+                <div style={styles.skippedList}>
+                  {errors.map((e, i) => (
+                    <p key={i} style={styles.errorRow}>Row {e.row}: {e.message}</p>
+                  ))}
+                </div>
+              )}
+            </div>
+          )}
+        </div>
+      )}
     </div>
   );
 }
@@ -298,7 +324,10 @@ const styles: { [key: string]: React.CSSProperties } = {
   td: { padding: '12px', color: '#fff', borderBottom: '1px solid #222', whiteSpace: 'nowrap' },
   tr: { backgroundColor: '#0f0f1a' },
   confirmBtn: { padding: '12px 24px', backgroundColor: '#00ff88', color: '#000', border: 'none', borderRadius: '8px', cursor: 'pointer', fontWeight: 'bold', fontSize: '16px' },
-  success: { color: '#00ff88', fontSize: '18px', marginTop: '16px' }
+  successBox: { marginTop: '16px' },
+  success: { color: '#00ff88', fontSize: '16px', margin: '0 0 8px 0' },
+  toggleSkippedBtn: { padding: '4px 10px', backgroundColor: '#2a2a3e', color: '#aaa', border: '1px solid #444', borderRadius: '4px', cursor: 'pointer', fontSize: '13px' },
+  skippedList: { backgroundColor: '#2a0000', padding: '12px', borderRadius: '6px', marginTop: '8px' }
 };
 
 export default ImportCSV;

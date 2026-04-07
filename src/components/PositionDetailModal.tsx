@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import React, { useState } from 'react';
 import { updatePosition } from '../services/positionService';
 import { formatCurrency, formatPct, formatDate } from '../utils/calculations';
 import type { Lot, PositionSummary } from '../types';
@@ -24,6 +24,14 @@ interface LotForm {
   contracts: string;
   costBasis: string;
 }
+
+const getPriceDateColor = (lastPriceDate?: string): string => {
+  if (!lastPriceDate) return '#ff4444';
+  const diffDays = Math.floor((Date.now() - new Date(lastPriceDate).getTime()) / 86400000);
+  if (diffDays === 0) return '#00ff88';
+  if (diffDays <= 7) return '#ffcc00';
+  return '#ff4444';
+};
 
 function PositionDetailModal({ summary, onClose, onSaved }: Props) {
   const { position } = summary;
@@ -140,8 +148,17 @@ function PositionDetailModal({ summary, onClose, onSaved }: Props) {
                   color={summary.realizedPnl >= 0 ? '#00ff88' : '#ff4444'}
                 />
               )}
-              {position.lastPriceDate && (
-                <DetailRow label="Price Last Updated" value={position.lastPriceDate} />
+              {position.lastPriceDate ? (
+                <DetailRow
+                  label="Price Last Updated"
+                  value={position.lastPriceDate}
+                  indicator={<span style={{ display: 'inline-block', width: '8px', height: '8px', borderRadius: '50%', backgroundColor: getPriceDateColor(position.lastPriceDate), flexShrink: 0 }} title="Price freshness" />}
+                />
+              ) : (
+                <DetailRow label="Price Last Updated" value="Never" color="#ff4444" />
+              )}
+              {summary.currentValue == null && (
+                <DetailRow label="Price Status" value="⚠️ Last fetch failed" color="#ff9900" />
               )}
             </div>
 
@@ -305,11 +322,14 @@ function PositionDetailModal({ summary, onClose, onSaved }: Props) {
   );
 }
 
-function DetailRow({ label, value, color }: { label: string; value: string; color?: string }) {
+function DetailRow({ label, value, color, indicator }: { label: string; value: string; color?: string; indicator?: React.ReactNode }) {
   return (
     <>
       <span style={{ color: '#aaa', fontSize: '14px' }}>{label}</span>
-      <span style={{ color: color ?? '#fff', fontSize: '14px', fontWeight: 'bold' }}>{value}</span>
+      <span style={{ color: color ?? '#fff', fontSize: '14px', fontWeight: 'bold', display: 'flex', alignItems: 'center', gap: '6px' }}>
+        {indicator}
+        {value}
+      </span>
     </>
   );
 }

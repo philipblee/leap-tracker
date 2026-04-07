@@ -37,7 +37,11 @@ const getYahooCrumb = (): Promise<{ crumb: string; cookie: string }> => {
 const getExpiryTimestamp = (expiry: string): number =>
   Math.floor(new Date(expiry).getTime() / 1000);
 
-const fetchOptionPrice = async (ticker: string, optionType: string, strike: number, expiry: string) => {
+type PriceResult =
+  | { currentValue: number; bid: number; ask: number; lastPrice: number; error?: never }
+  | { currentValue: null; error: string };
+
+const fetchOptionPrice = async (ticker: string, optionType: string, strike: number, expiry: string): Promise<PriceResult> => {
   const { crumb, cookie } = await getYahooCrumb();
   const url = `https://query1.finance.yahoo.com/v7/finance/options/${ticker}?date=${getExpiryTimestamp(expiry)}&crumb=${encodeURIComponent(crumb)}`;
   const { body: json } = await httpsGet(url, { 'Cookie': cookie });
@@ -47,11 +51,18 @@ const fetchOptionPrice = async (ticker: string, optionType: string, strike: numb
     : json?.optionChain?.result?.[0]?.options?.[0]?.puts;
   console.log('Contracts found:', contracts?.length ?? 'none');
 
-  if (!contracts) throw new Error('No contracts found');
-  const match = contracts.find((c: any) => Math.abs(c.strike - strike) < 0.01);
-  console.log('Looking for strike:', strike, 'Available strikes:', contracts.slice(0, 5).map((c: any) => c.strike));
+  if (!contracts) {
+    console.error(`No contracts found for ${ticker} ${optionType} expiry ${expiry}`);
+    return { currentValue: null, error: `No contracts found for ${ticker} ${optionType} expiry ${expiry}` };
+  }
 
-  if (!match) throw new Error(`No match found for strike ${strike}`);
+  const match = contracts.find((c: any) => Math.abs(c.strike - strike) < 0.01);
+  console.log('Strike', strike, 'match:', match ? `found at ${match.strike}, lastPrice: ${match.lastPrice}` : 'NOT FOUND');
+
+  if (!match) {
+    console.error(`No contract found for strike ${strike} on ${ticker}`);
+    return { currentValue: null, error: `No contract found for strike ${strike} on ${ticker}` };
+  }
 
   return {
     bid: match.bid,
@@ -67,8 +78,8 @@ export const getOptionPrice = functions.https.onCall(async (data) => {
   try {
     return await fetchOptionPrice(ticker, optionType, strike, expiry);
   } catch (error: any) {
-    console.log('Error:', error.message);
-    throw new functions.https.HttpsError('internal', error.message);
+    console.error('getOptionPrice unexpected error:', error.message);
+    return { currentValue: null, error: error.message };
   }
 });
 
@@ -99,13 +110,17 @@ export const dailySnapshot = functions.pubsub
       for (const position of openPositions) {
         try {
           const result = await fetchOptionPrice(position.ticker, position.optionType, position.strike, position.expiry);
-          await db.collection('positions').doc(position.id).update({
-            currentValue: result.currentValue,
-            lastPriceDate: new Date().toISOString().split('T')[0]
-          });
-          position.currentValue = result.currentValue;
-        } catch {
-          // Keep existing price
+          if (result.currentValue != null) {
+            await db.collection('positions').doc(position.id).update({
+              currentValue: result.currentValue,
+              lastPriceDate: new Date().toISOString().split('T')[0]
+            });
+            position.currentValue = result.currentValue;
+          } else {
+            console.error(`dailySnapshot: skipping price update for ${position.ticker} — ${result.error}`);
+          }
+        } catch (err: any) {
+          console.error(`dailySnapshot: unexpected error for ${position.ticker}:`, err.message);
         }
       }
 

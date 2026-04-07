@@ -19,6 +19,7 @@ function Positions() {
   const [showAddModal, setShowAddModal] = useState(false);
   const [selectedSummary, setSelectedSummary] = useState<PositionSummary | null>(null);
   const [detailSummary, setDetailSummary] = useState<PositionSummary | null>(null);
+  const [refreshStatus, setRefreshStatus] = useState<{ succeeded: number; failed: Array<{ ticker: string; id: string }> } | null>(null);
 
   const handleDelete = (s: PositionSummary) => {
     const { position, lots } = s;
@@ -39,10 +40,14 @@ function Positions() {
 
   const handleRefresh = async () => {
     setRefreshing(true);
+    setRefreshStatus(null);
     console.log('Refreshing', summaries.length, 'positions');
-    const functions = getFunctions();
-    const getOptionPrice = httpsCallable(functions, 'getOptionPrice');
+    const fns = getFunctions();
+    const getOptionPrice = httpsCallable(fns, 'getOptionPrice');
     const today = new Date().toISOString().split('T')[0];
+
+    let succeeded = 0;
+    const failed: Array<{ ticker: string; id: string }> = [];
 
     for (const s of summaries) {
       const { position } = s;
@@ -53,19 +58,28 @@ function Positions() {
           strike: position.strike,
           expiry: position.expiry
         }) as any;
-        // Store per-contract value (lastPrice * 100); total = currentValue * openContracts
-        await updatePosition(position.id!, {
-          currentValue: result.data.currentValue,
-          lastPriceDate: today
-        });
-      } catch {
-        console.log('Failed for', position.ticker, position.strike, err.message);
-        // Leave existing price if fetch fails
+        if (result.data.currentValue != null) {
+          // Store per-contract value (lastPrice * 100); total = currentValue * openContracts
+          await updatePosition(position.id!, {
+            currentValue: result.data.currentValue,
+            lastPriceDate: today
+          });
+          succeeded++;
+        } else {
+          console.error('No price for', position.ticker, position.strike, result.data.error);
+          failed.push({ ticker: position.ticker, id: position.id! });
+        }
+      } catch (err: any) {
+        console.error('Failed for', position.ticker, position.strike, err.message);
+        failed.push({ ticker: position.ticker, id: position.id! });
       }
     }
 
     await load();
     setRefreshing(false);
+    const status = { succeeded, failed };
+    setRefreshStatus(status);
+    setTimeout(() => setRefreshStatus(null), 30000);
   };
 
   const accounts = ['ALL', ...new Set(summaries.map(s => s.position.account))];
@@ -100,6 +114,7 @@ function Positions() {
   });
 
   const sortableColumns = new Set(['Account', 'Ticker', 'Expiry', 'Current Value', 'Cost Basis', 'P&L $', 'P&L %']);
+  const failedIds = new Set(refreshStatus?.failed.map(f => f.id) ?? []);
 
   if (loading) return <p style={{ color: '#fff' }}>Loading...</p>;
 
@@ -112,16 +127,28 @@ function Positions() {
     <div>
       <div style={styles.header}>
         <h2 style={styles.heading}>Open Positions</h2>
-        <div style={styles.controls}>
-          <select style={styles.select} value={accountFilter} onChange={e => setAccountFilter(e.target.value)}>
-            {accounts.map(a => <option key={a} value={a}>{a}</option>)}
-          </select>
-          <button style={styles.refreshBtn} onClick={handleRefresh} disabled={refreshing}>
-            {refreshing ? 'Refreshing...' : '🔄 Refresh Prices'}
-          </button>
-          <button style={styles.addBtn} onClick={() => setShowAddModal(true)}>
-            + Add Position
-          </button>
+        <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: '6px' }}>
+          <div style={styles.controls}>
+            <select style={styles.select} value={accountFilter} onChange={e => setAccountFilter(e.target.value)}>
+              {accounts.map(a => <option key={a} value={a}>{a}</option>)}
+            </select>
+            <button style={styles.refreshBtn} onClick={handleRefresh} disabled={refreshing}>
+              {refreshing ? 'Refreshing...' : '🔄 Refresh Prices'}
+            </button>
+            <button style={styles.addBtn} onClick={() => setShowAddModal(true)}>
+              + Add Position
+            </button>
+          </div>
+          {refreshStatus && (
+            <div style={styles.refreshStatus}>
+              <span style={{ color: '#00ff88' }}>✅ {refreshStatus.succeeded} price{refreshStatus.succeeded !== 1 ? 's' : ''} updated</span>
+              {refreshStatus.failed.length > 0 && (
+                <span style={{ color: '#ff9900', marginLeft: '12px' }}>
+                  ⚠️ {refreshStatus.failed.length} failed: {refreshStatus.failed.map(f => f.ticker).join(', ')}
+                </span>
+              )}
+            </div>
+          )}
         </div>
       </div>
 
@@ -151,7 +178,10 @@ function Positions() {
                   <td style={styles.td}>${position.strike}</td>
                   <td style={styles.td}>{position.expiry}</td>
                   <td style={styles.td}>{s.openContracts}</td>
-                  <td style={styles.td}>{s.currentValue != null ? formatCurrency(s.currentValue) : '—'}</td>
+                  <td style={{ ...styles.td, color: failedIds.has(position.id!) ? '#ff9900' : '#fff' }}>
+                    {s.currentValue != null ? formatCurrency(s.currentValue) : '—'}
+                    {failedIds.has(position.id!) && <span style={{ marginLeft: '4px', fontSize: '10px' }} title="Last refresh failed">●</span>}
+                  </td>
                   <td style={styles.td}>{formatCurrency(s.totalCostBasis)}</td>
                   <td style={{ ...styles.td, color: s.unrealizedPnl == null ? '#fff' : s.unrealizedPnl >= 0 ? '#00ff88' : '#ff4444' }}>
                     {s.unrealizedPnl != null ? formatCurrency(s.unrealizedPnl) : '—'}
@@ -224,7 +254,8 @@ const styles: { [key: string]: React.CSSProperties } = {
   tr: { backgroundColor: '#0f0f1a' },
   totalTd: { padding: '12px', color: '#fff', borderBottom: '1px solid #333', borderTop: '2px solid #444', backgroundColor: '#2a2a3e', whiteSpace: 'nowrap' },
   closeBtn: { padding: '4px 10px', backgroundColor: '#ff9900', color: '#000', border: 'none', borderRadius: '4px', cursor: 'pointer', marginRight: '6px', whiteSpace: 'nowrap' },
-  deleteBtn: { padding: '4px 10px', backgroundColor: '#ff4444', color: '#fff', border: 'none', borderRadius: '4px', cursor: 'pointer', whiteSpace: 'nowrap' }
+  deleteBtn: { padding: '4px 10px', backgroundColor: '#ff4444', color: '#fff', border: 'none', borderRadius: '4px', cursor: 'pointer', whiteSpace: 'nowrap' },
+  refreshStatus: { fontSize: '13px', padding: '4px 0' }
 };
 
 export default Positions;

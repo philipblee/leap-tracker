@@ -1,18 +1,16 @@
-Starting emulator
-
+To start or restart emulator
 cd functions
 firebase emulators:start --only functions
 
-starting vite
-
+starting react-vite
 npm run dev
 
 any changes in functions needs to rebuild
-
-in functions folder
-
+To compile functions, in functions folder
 npm run build
-firebase emulators:start --only functions
 
 to free up ports
 npx kill-port 5001
+
+to run claude code
+claude
