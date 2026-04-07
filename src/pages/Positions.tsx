@@ -39,6 +39,7 @@ function Positions() {
 
   const handleRefresh = async () => {
     setRefreshing(true);
+    console.log('Refreshing', summaries.length, 'positions');
     const functions = getFunctions();
     const getOptionPrice = httpsCallable(functions, 'getOptionPrice');
     const today = new Date().toISOString().split('T')[0];
@@ -58,6 +59,7 @@ function Positions() {
           lastPriceDate: today
         });
       } catch {
+        console.log('Failed for', position.ticker, position.strike, err.message);
         // Leave existing price if fetch fails
       }
     }

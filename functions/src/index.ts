@@ -41,13 +41,16 @@ const fetchOptionPrice = async (ticker: string, optionType: string, strike: numb
   const { crumb, cookie } = await getYahooCrumb();
   const url = `https://query1.finance.yahoo.com/v7/finance/options/${ticker}?date=${getExpiryTimestamp(expiry)}&crumb=${encodeURIComponent(crumb)}`;
   const { body: json } = await httpsGet(url, { 'Cookie': cookie });
-
+  console.log('Yahoo response:', JSON.stringify(json).slice(0, 200));
   const contracts = optionType === 'CALL'
     ? json?.optionChain?.result?.[0]?.options?.[0]?.calls
     : json?.optionChain?.result?.[0]?.options?.[0]?.puts;
+  console.log('Contracts found:', contracts?.length ?? 'none');
 
   if (!contracts) throw new Error('No contracts found');
   const match = contracts.find((c: any) => Math.abs(c.strike - strike) < 0.01);
+  console.log('Looking for strike:', strike, 'Available strikes:', contracts.slice(0, 5).map((c: any) => c.strike));
+
   if (!match) throw new Error(`No match found for strike ${strike}`);
 
   return {
@@ -60,9 +63,11 @@ const fetchOptionPrice = async (ticker: string, optionType: string, strike: numb
 
 export const getOptionPrice = functions.https.onCall(async (data) => {
   const { ticker, optionType, strike, expiry } = data;
+  console.log('Received:', { ticker, optionType, strike, expiry })
   try {
     return await fetchOptionPrice(ticker, optionType, strike, expiry);
   } catch (error: any) {
+    console.log('Error:', error.message);
     throw new functions.https.HttpsError('internal', error.message);
   }
 });
