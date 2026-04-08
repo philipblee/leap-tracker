@@ -59,8 +59,11 @@ function Positions() {
           expiry: position.expiry
         }) as any;
         if (result.data.currentValue != null) {
-          // Store per-contract value (lastPrice * 100); total = currentValue * openContracts
           await updatePosition(position.id!, {
+            lastPrice: result.data.lastPrice,
+            bid: result.data.bid,
+            ask: result.data.ask,
+            price: result.data.price,
             currentValue: result.data.currentValue,
             lastPriceDate: today
           });

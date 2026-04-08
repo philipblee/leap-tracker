@@ -160,6 +160,18 @@ function PositionDetailModal({ summary, onClose, onSaved }: Props) {
               {summary.currentValue == null && (
                 <DetailRow label="Price Status" value="⚠️ Last fetch failed" color="#ff9900" />
               )}
+              {position.lastPrice != null && (
+                <DetailRow label="Last Price" value={formatCurrency(position.lastPrice)} />
+              )}
+              {position.bid != null && (
+                <DetailRow label="Bid" value={formatCurrency(position.bid)} />
+              )}
+              {position.ask != null && (
+                <DetailRow label="Ask" value={formatCurrency(position.ask)} />
+              )}
+              {position.price != null && (
+                <DetailRow label="Price (used)" value={formatCurrency(position.price)} color="#00d4ff" />
+              )}
             </div>
 
             {/* Open lots */}

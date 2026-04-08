@@ -12,6 +12,10 @@ export interface Position {
   isOpen: boolean;
   currentValue?: number;
   lastPriceDate?: string;
+  lastPrice?: number;
+  bid?: number;
+  ask?: number;
+  price?: number;  // max(lastPrice, bid) — effective price used for valuation
 }
 
 export interface Lot {

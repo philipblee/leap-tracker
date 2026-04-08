@@ -38,7 +38,7 @@ const getExpiryTimestamp = (expiry: string): number =>
   Math.floor(new Date(expiry).getTime() / 1000);
 
 type PriceResult =
-  | { currentValue: number; bid: number; ask: number; lastPrice: number; error?: never }
+  | { currentValue: number; price: number; lastPrice: number; bid: number; ask: number; error?: never }
   | { currentValue: null; error: string };
 
 const fetchOptionPrice = async (ticker: string, optionType: string, strike: number, expiry: string): Promise<PriceResult> => {
@@ -64,11 +64,15 @@ const fetchOptionPrice = async (ticker: string, optionType: string, strike: numb
     return { currentValue: null, error: `No contract found for strike ${strike} on ${ticker}` };
   }
 
+  const lastPrice: number = match.lastPrice ?? 0;
+  const bid: number = match.bid ?? 0;
+  const price = Math.max(lastPrice, bid);
   return {
-    bid: match.bid,
-    ask: match.ask,
-    lastPrice: match.lastPrice,
-    currentValue: match.lastPrice * 100  // per-contract value
+    lastPrice,
+    bid,
+    ask: match.ask ?? 0,
+    price,
+    currentValue: price * 100  // per-contract value
   };
 };
 
@@ -111,11 +115,16 @@ export const dailySnapshot = functions.pubsub
         try {
           const result = await fetchOptionPrice(position.ticker, position.optionType, position.strike, position.expiry);
           if (result.currentValue != null) {
+            const price = Math.max(result.lastPrice ?? 0, result.bid ?? 0);
             await db.collection('positions').doc(position.id).update({
-              currentValue: result.currentValue,
+              lastPrice: result.lastPrice,
+              bid: result.bid,
+              ask: result.ask,
+              price,
+              currentValue: price * 100,
               lastPriceDate: new Date().toISOString().split('T')[0]
             });
-            position.currentValue = result.currentValue;
+            position.currentValue = price * 100;
           } else {
             console.error(`dailySnapshot: skipping price update for ${position.ticker} — ${result.error}`);
           }
