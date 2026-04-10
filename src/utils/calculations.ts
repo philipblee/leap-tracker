@@ -42,9 +42,22 @@ export const formatPct = (value: number): string =>
   `${value >= 0 ? '+' : ''}${value.toFixed(2)}%`;
 
 export const formatDate = (date: string): string => {
-  if (!date) return '—';
-  if (date.includes('/')) return date;
-  const [year, month, day] = date.split('-');
-  if (!year || !month || !day) return date;
-  return `${month}/${day}/${year}`;
+  if (!date || date === '—') return '—';
+
+  let year: string, month: string, day: string;
+
+  if (date.includes('-')) {
+    [year, month, day] = date.split('-');
+  } else {
+    [month, day, year] = date.split('/');
+  }
+
+  return `${month.padStart(2, '0')}/${day.padStart(2, '0')}/${year}`;
+};
+
+export const toSortableDate = (date: string): string => {
+  if (!date || date === '—') return '';
+  if (date.includes('-')) return date; // already YYYY-MM-DD
+  const [month, day, year] = date.split('/');
+  return `${year}-${month.padStart(2, '0')}-${day.padStart(2, '0')}`;
 };

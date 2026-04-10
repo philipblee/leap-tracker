@@ -2,7 +2,7 @@ import { useState, useEffect } from 'react';
 import { getAllPositions, getPositionSummaries } from '../services/positionService';
 import { getAllLots } from '../services/lotService';
 import type { PositionSummary } from '../types';
-import { formatCurrency, formatPct, formatDate } from '../utils/calculations';
+import { formatCurrency, formatPct, formatDate, toSortableDate } from '../utils/calculations';
 import PositionDetailModal from '../components/PositionDetailModal';
 
 const getYear = (dateStr: string): string => {
@@ -69,10 +69,10 @@ function ClosedPositions() {
         aVal = aClosedLots.reduce((sum, l) => sum + (l.sellPrice ?? 0), 0);
         bVal = bClosedLots.reduce((sum, l) => sum + (l.sellPrice ?? 0), 0);
         break;
-      case 'Last Sell Date':
-        aVal = aClosedLots.map(l => l.sellDate ?? '').filter(Boolean).sort().at(-1) ?? '';
-        bVal = bClosedLots.map(l => l.sellDate ?? '').filter(Boolean).sort().at(-1) ?? '';
-        break;
+    case 'Last Sell Date':
+      aVal = toSortableDate(aClosedLots.map(l => l.sellDate ?? '').filter(Boolean).sort().at(-1) ?? '');
+      bVal = toSortableDate(bClosedLots.map(l => l.sellDate ?? '').filter(Boolean).sort().at(-1) ?? '');
+      break;
       case 'Realized P&L $': aVal = a.realizedPnl; bVal = b.realizedPnl; break;
       case 'Realized P&L %':
         const aCost = aClosedLots.reduce((sum, l) => sum + l.costBasis, 0);
