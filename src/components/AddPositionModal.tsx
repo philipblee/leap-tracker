@@ -9,15 +9,18 @@ interface Props {
 }
 
 function AddPositionModal({ onClose, onSaved }: Props) {
-  const [form, setForm] = useState({
+const today = new Date().toISOString().split('T')[0];
+const defaultExpiry = localStorage.getItem('defaultExpiry') ?? '2027-01-15';
+
+const [form, setForm] = useState({
     ticker: '',
     optionType: 'CALL' as OptionType,
     strike: '',
-    expiry: '',
-    contracts: '',
+    expiry: defaultExpiry,
+    contracts: '1',
     costBasis: '',
-    buyDate: '',
-    account: ''
+    buyDate: today,
+    account: 'IRA'
   });
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
@@ -76,7 +79,15 @@ function AddPositionModal({ onClose, onSaved }: Props) {
           <input style={styles.input} name="strike" value={form.strike} onChange={handleChange} placeholder="200" type="number" />
 
           <label style={styles.label}>Expiry</label>
-          <input style={styles.input} name="expiry" value={form.expiry} onChange={handleChange} type="date" />
+          <div>
+            <input style={styles.input} name="expiry" value={form.expiry} onChange={handleChange} type="date" />
+            <span
+              style={{ color: '#00d4ff', fontSize: '11px', cursor: 'pointer' }}
+              onClick={() => { localStorage.setItem('defaultExpiry', form.expiry); }}
+            >
+              Set as default
+            </span>
+          </div>
 
           <label style={styles.label}>Contracts</label>
           <input style={styles.input} name="contracts" value={form.contracts} onChange={handleChange} placeholder="2" type="number" />
