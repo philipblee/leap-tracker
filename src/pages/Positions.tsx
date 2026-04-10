@@ -58,17 +58,25 @@ function Positions() {
           strike: position.strike,
           expiry: position.expiry
         }) as any;
-        if (result.data.currentValue != null) {
-          await updatePosition(position.id!, {
-            lastPrice: result.data.lastPrice,
-            bid: result.data.bid,
-            ask: result.data.ask,
-            price: result.data.price,
-            currentValue: result.data.currentValue,
-            lastPriceDate: today
-          });
-          succeeded++;
-        } else {
+          if (result.data.currentValue != null) {
+            const bid = result.data.bid ?? 0;
+            const price = bid > 0
+              ? result.data.price
+              : (position.price ?? result.data.price);
+            const currentValue = bid > 0
+              ? result.data.currentValue
+              : (position.currentValue ?? result.data.currentValue);
+
+            await updatePosition(position.id!, {
+              lastPrice: result.data.lastPrice,
+              bid: result.data.bid,
+              ask: result.data.ask,
+              price,
+              currentValue,
+              lastPriceDate: today
+            });
+            succeeded++;
+          } else {
           console.error('No price for', position.ticker, position.strike, result.data.error);
           failed.push({ ticker: position.ticker, id: position.id! });
         }
