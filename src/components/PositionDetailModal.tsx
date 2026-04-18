@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { updatePosition } from '../services/positionService';
+import { updatePosition, deletePosition } from '../services/positionService';
 import { formatCurrency, formatPct, formatDate } from '../utils/calculations';
 import type { Lot, PositionSummary } from '../types';
 import { updateLot, deleteLot } from '../services/lotService';
@@ -299,6 +299,17 @@ function PositionDetailModal({ summary, onClose, onSaved }: Props) {
             <div style={styles.buttons}>
               <button style={styles.editBtn} onClick={() => setEditingPosition(true)}>✏️ Edit Position</button>
               <button style={styles.cancelBtn} onClick={onClose}>Close</button>
+              <button
+                style={styles.deleteBtn}
+                onClick={async () => {
+                  if (confirm(`Delete ${position.ticker} ${position.optionType} $${position.strike}? This cannot be undone.`)) {
+                    await deletePosition(position.id!);
+                    onSaved();
+                  }
+                }}
+              >
+                🗑️ Delete
+              </button>
             </div>
           </>
         ) : (
@@ -392,7 +403,8 @@ const styles: { [key: string]: React.CSSProperties } = {
   buttons: { display: 'flex', gap: '12px', justifyContent: 'flex-end', marginTop: '8px' },
   editBtn: { padding: '10px 20px', backgroundColor: '#ff9900', color: '#000', border: 'none', borderRadius: '6px', cursor: 'pointer', fontWeight: 'bold' },
   cancelBtn: { padding: '10px 20px', backgroundColor: '#333', color: '#fff', border: 'none', borderRadius: '6px', cursor: 'pointer' },
-  saveBtn: { padding: '10px 20px', backgroundColor: '#00d4ff', color: '#000', border: 'none', borderRadius: '6px', cursor: 'pointer', fontWeight: 'bold' }
+  saveBtn: { padding: '10px 20px', backgroundColor: '#00d4ff', color: '#000', border: 'none', borderRadius: '6px', cursor: 'pointer', fontWeight: 'bold' },
+  deleteBtn: { padding: '10px 20px', backgroundColor: '#ff4444', color: '#fff', border: 'none', borderRadius: '6px', cursor: 'pointer', fontWeight: 'bold', marginLeft: 'auto' }
 };
 
 export default PositionDetailModal;

@@ -20,6 +20,15 @@ function Positions() {
   const [selectedSummary, setSelectedSummary] = useState<PositionSummary | null>(null);
   const [detailSummary, setDetailSummary] = useState<PositionSummary | null>(null);
   const [refreshStatus, setRefreshStatus] = useState<{ succeeded: number; failed: Array<{ ticker: string; id: string }> } | null>(null);
+  const [viewMode, setViewMode] = useState<'normal' | 'compact'>(() =>
+    (localStorage.getItem('viewMode') as 'normal' | 'compact') || 'normal'
+  );
+
+  const toggleViewMode = () => {
+    const newMode = viewMode === 'normal' ? 'compact' : 'normal';
+    setViewMode(newMode);
+    localStorage.setItem('viewMode', newMode);
+  };
 
   const handleDelete = (s: PositionSummary) => {
     const { position, lots } = s;
@@ -147,6 +156,9 @@ function Positions() {
           <button style={styles.addBtn} onClick={() => setShowAddModal(true)}>
             + Add Position
           </button>
+          <button style={styles.viewToggleBtn} onClick={toggleViewMode}>
+            {viewMode === 'normal' ? '📱 Compact' : '📊 Normal'}
+          </button>
         </div>
         {refreshStatus && (
           <div style={styles.refreshStatus}>
@@ -164,7 +176,10 @@ function Positions() {
         <table style={styles.table}>
           <thead>
             <tr>
-              {['Account','Ticker','Type','Strike','Expiry','Contracts','Current Value','Cost Basis','P&L $','P&L %','Actions'].map(h => (
+              {(viewMode === 'normal'
+                ? ['Ticker','Type','Strike','Expiry','Qty','Current Value','Cost Basis','P&L $','P&L %','Account','Actions']
+                : ['Position','Qty','Current Value','Cost Basis','P&L $','P&L %','Account','Actions']
+              ).map(h => (
                 <th
                   key={h}
                   style={{ ...styles.th, cursor: sortableColumns.has(h) ? 'pointer' : 'default' }}
@@ -180,11 +195,16 @@ function Positions() {
               const { position } = s;
               return (
                 <tr key={position.id} style={{ ...styles.tr, cursor: 'pointer' }} onClick={() => setDetailSummary(s)}>
-                  <td style={styles.td}>{position.account}</td>
-                  <td style={styles.td}>{position.ticker}</td>
-                  <td style={styles.td}>{position.optionType}</td>
-                  <td style={styles.td}>${position.strike}</td>
-                  <td style={styles.td}>{position.expiry}</td>
+                  {viewMode === 'normal' ? (
+                    <>
+                      <td style={styles.td}>{position.ticker}</td>
+                      <td style={styles.td}>{position.optionType}</td>
+                      <td style={styles.td}>${position.strike}</td>
+                      <td style={styles.td}>{position.expiry}</td>
+                    </>
+                  ) : (
+                    <td style={styles.td}>{position.ticker} {position.optionType} ${position.strike} {position.expiry}</td>
+                  )}
                   <td style={styles.td}>{s.openContracts}</td>
                   <td style={{ ...styles.td, color: failedIds.has(position.id!) ? '#ff9900' : '#fff' }}>
                     {s.currentValue != null ? formatCurrency(s.currentValue) : '—'}
@@ -197,16 +217,16 @@ function Positions() {
                   <td style={{ ...styles.td, color: s.unrealizedPct == null ? '#fff' : s.unrealizedPct >= 0 ? '#00ff88' : '#ff4444' }}>
                     {s.unrealizedPct != null ? formatPct(s.unrealizedPct) : '—'}
                   </td>
+                  <td style={styles.td}>{position.account}</td>
                   <td style={styles.td} onClick={e => e.stopPropagation()}>
                     <button style={styles.closeBtn} onClick={() => setSelectedSummary(s)}>Close</button>
-                    <button style={styles.deleteBtn} onClick={() => handleDelete(s)}>Delete</button>
                   </td>
                 </tr>
               );
             })}
             {/* Totals row */}
             <tr>
-              <td style={styles.totalTd} colSpan={5}><strong>TOTAL</strong></td>
+              <td style={styles.totalTd} colSpan={viewMode === 'normal' ? 4 : 1}><strong>TOTAL</strong></td>
               <td style={styles.totalTd}><strong>{filtered.reduce((sum, s) => sum + s.openContracts, 0)}</strong></td>
               <td style={styles.totalTd}><strong>{formatCurrency(totalCurrentValue)}</strong></td>
               <td style={styles.totalTd}><strong>{formatCurrency(totalCostBasis)}</strong></td>
@@ -216,6 +236,7 @@ function Positions() {
               <td style={{ ...styles.totalTd, color: totalPnlPct >= 0 ? '#00ff88' : '#ff4444' }}>
                 <strong>{formatPct(totalPnlPct)}</strong>
               </td>
+              <td style={styles.totalTd}></td>
               <td style={styles.totalTd}></td>
             </tr>
           </tbody>
@@ -255,6 +276,7 @@ const styles: { [key: string]: React.CSSProperties } = {
   select: { padding: '8px 12px', backgroundColor: '#2a2a3e', color: '#fff', border: 'none', borderRadius: '6px' },
   refreshBtn: { padding: '8px 16px', backgroundColor: '#00d4ff', color: '#000', border: 'none', borderRadius: '6px', cursor: 'pointer', fontWeight: 'bold' },
   addBtn: { padding: '8px 16px', backgroundColor: '#00ff88', color: '#000', border: 'none', borderRadius: '6px', cursor: 'pointer', fontWeight: 'bold' },
+  viewToggleBtn: { padding: '8px 16px', backgroundColor: 'transparent', color: '#aaa', border: '1px solid #444', borderRadius: '6px', cursor: 'pointer' },
   tableWrapper: { overflowX: 'auto' },
   table: { width: '100%', borderCollapse: 'collapse' },
   th: { backgroundColor: '#1a1a2e', color: '#aaa', padding: '12px', textAlign: 'left', borderBottom: '1px solid #333', whiteSpace: 'nowrap' },
