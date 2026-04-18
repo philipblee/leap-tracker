@@ -58,7 +58,8 @@ function PositionDetailModal({ summary, onClose, onSaved }: Props) {
   const [savingLot, setSavingLot] = useState(false);
 
   const handlePosChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>) => {
-    setPosForm(prev => ({ ...prev, [e.target.name]: e.target.value }));
+    const value = e.target.name === 'ticker' ? e.target.value.toUpperCase() : e.target.value;
+    setPosForm(prev => ({ ...prev, [e.target.name]: value }));
   };
 
   const handleSavePosition = async () => {

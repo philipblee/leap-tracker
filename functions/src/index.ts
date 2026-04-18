@@ -76,6 +76,13 @@ const fetchOptionPrice = async (ticker: string, optionType: string, strike: numb
   };
 };
 
+const fetchStockPrice = async (ticker: string): Promise<number | null> => {
+  const { crumb, cookie } = await getYahooCrumb();
+  const url = `https://query1.finance.yahoo.com/v8/finance/chart/${ticker}?interval=1d&range=1d&crumb=${encodeURIComponent(crumb)}`;
+  const { body: json } = await httpsGet(url, { 'Cookie': cookie });
+  return json?.chart?.result?.[0]?.meta?.regularMarketPrice ?? null;
+};
+
 export const getOptionPrice = functions.https.onCall(async (data) => {
   const { ticker, optionType, strike, expiry } = data;
   console.log('Received:', { ticker, optionType, strike, expiry })
@@ -193,18 +200,25 @@ export const dailySnapshot = functions.pubsub
         };
       }
 
-      await db.collection('snapshots').add({
-        date: new Date().toISOString().split('T')[0],
-        totalCostBasis,
-        totalValue,
-        unrealizedPnl,
-        unrealizedPct,
-        realizedPnl,
-        realizedPct,
-        totalPnl,
-        totalPct,
-        byAccount
-      });
+    const [qqqPrice, spyPrice] = await Promise.all([
+      fetchStockPrice('QQQ'),
+      fetchStockPrice('SPY')
+    ]);
+
+    await db.collection('snapshots').add({
+      date: new Date().toISOString().split('T')[0],
+      totalCostBasis,
+      totalValue,
+      unrealizedPnl,
+      unrealizedPct,
+      realizedPnl,
+      realizedPct,
+      totalPnl,
+      totalPct,
+      qqqPrice,
+      spyPrice,
+      byAccount
+    });
 
       console.log('Daily snapshot saved successfully');
     } catch (error) {

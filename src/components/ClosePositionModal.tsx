@@ -13,7 +13,7 @@ interface Props {
 function ClosePositionModal({ summary, onClose, onSaved }: Props) {
   const { position } = summary;
   const [form, setForm] = useState({
-    sellDate: '',
+    sellDate: new Date().toISOString().split('T')[0],
     sellPrice: '',
     contractsSold: String(summary.openContracts)
   });

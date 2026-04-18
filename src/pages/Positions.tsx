@@ -137,30 +137,27 @@ function Positions() {
   return (
     <div>
       <div style={styles.header}>
-        <h2 style={styles.heading}>Open Positions</h2>
-        <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: '6px' }}>
-          <div style={styles.controls}>
-            <select style={styles.select} value={accountFilter} onChange={e => setAccountFilter(e.target.value)}>
-              {accounts.map(a => <option key={a} value={a}>{a}</option>)}
-            </select>
-            <button style={styles.refreshBtn} onClick={handleRefresh} disabled={refreshing}>
-              {refreshing ? 'Refreshing...' : '🔄 Refresh Prices'}
-            </button>
-            <button style={styles.addBtn} onClick={() => setShowAddModal(true)}>
-              + Add Position
-            </button>
-          </div>
-          {refreshStatus && (
-            <div style={styles.refreshStatus}>
-              <span style={{ color: '#00ff88' }}>✅ {refreshStatus.succeeded} price{refreshStatus.succeeded !== 1 ? 's' : ''} updated</span>
-              {refreshStatus.failed.length > 0 && (
-                <span style={{ color: '#ff9900', marginLeft: '12px' }}>
-                  ⚠️ {refreshStatus.failed.length} failed: {refreshStatus.failed.map(f => f.ticker).join(', ')}
-                </span>
-              )}
-            </div>
-          )}
+        <div style={styles.controls}>
+          <select style={styles.select} value={accountFilter} onChange={e => setAccountFilter(e.target.value)}>
+            {accounts.map(a => <option key={a} value={a}>{a}</option>)}
+          </select>
+          <button style={styles.refreshBtn} onClick={handleRefresh} disabled={refreshing}>
+            {refreshing ? 'Refreshing...' : '🔄 Refresh Prices'}
+          </button>
+          <button style={styles.addBtn} onClick={() => setShowAddModal(true)}>
+            + Add Position
+          </button>
         </div>
+        {refreshStatus && (
+          <div style={styles.refreshStatus}>
+            <span style={{ color: '#00ff88' }}>✅ {refreshStatus.succeeded} price{refreshStatus.succeeded !== 1 ? 's' : ''} updated</span>
+            {refreshStatus.failed.length > 0 && (
+              <span style={{ color: '#ff9900', marginLeft: '12px' }}>
+                ⚠️ {refreshStatus.failed.length} failed: {refreshStatus.failed.map(f => f.ticker).join(', ')}
+              </span>
+            )}
+          </div>
+        )}
       </div>
 
       <div style={styles.tableWrapper}>
@@ -252,9 +249,9 @@ function Positions() {
 }
 
 const styles: { [key: string]: React.CSSProperties } = {
-  header: { display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '20px' },
+  header: { display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '12px', marginBottom: '20px' },
   heading: { color: '#fff', margin: 0 },
-  controls: { display: 'flex', gap: '12px', alignItems: 'center' },
+  controls: { display: 'flex', gap: '12px', alignItems: 'center', flexWrap: 'wrap', justifyContent: 'center' },
   select: { padding: '8px 12px', backgroundColor: '#2a2a3e', color: '#fff', border: 'none', borderRadius: '6px' },
   refreshBtn: { padding: '8px 16px', backgroundColor: '#00d4ff', color: '#000', border: 'none', borderRadius: '6px', cursor: 'pointer', fontWeight: 'bold' },
   addBtn: { padding: '8px 16px', backgroundColor: '#00ff88', color: '#000', border: 'none', borderRadius: '6px', cursor: 'pointer', fontWeight: 'bold' },
