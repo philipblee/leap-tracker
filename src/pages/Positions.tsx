@@ -1,7 +1,6 @@
 import { useState, useEffect } from 'react';
 import { getOpenPositions, getPositionSummaries, updatePosition } from '../services/positionService';
 import { getAllLots } from '../services/lotService';
-import { deletePosition } from '../services/positionService';
 import type { PositionSummary } from '../types';
 import { formatCurrency, formatPct } from '../utils/calculations';
 import { getFunctions, httpsCallable } from 'firebase/functions';
@@ -30,14 +29,6 @@ function Positions() {
     localStorage.setItem('viewMode', newMode);
   };
 
-  const handleDelete = (s: PositionSummary) => {
-    const { position, lots } = s;
-    const msg = lots.length > 0
-      ? `Delete ${position.ticker} ${position.optionType} $${position.strike} and its ${lots.length} lot(s)? This cannot be undone.`
-      : `Delete ${position.ticker} ${position.optionType} $${position.strike}?`;
-    if (!window.confirm(msg)) return;
-    deletePosition(position.id!).then(load);
-  };
 
   const load = async () => {
     const [positions, lots] = await Promise.all([getOpenPositions(), getAllLots()]);
