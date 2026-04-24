@@ -135,10 +135,10 @@ function PositionDetailModal({ summary, onClose, onSaved }: Props) {
               {summary.currentValue != null && (
                 <DetailRow label="Current Value" value={formatCurrency(summary.currentValue)} />
               )}
-              {summary.unrealizedPnl != null && (
+              {summary.unrealizedPnl != null && summary.unrealizedPct != null && (
                 <DetailRow
                   label="Unrealized P&L"
-                  value={`${formatCurrency(summary.unrealizedPnl)} (${formatPct(summary.unrealizedPct!)})`}
+                  value={`${formatCurrency(summary.unrealizedPnl)} (${formatPct(summary.unrealizedPct)})`}
                   color={summary.unrealizedPnl >= 0 ? '#00ff88' : '#ff4444'}
                 />
               )}

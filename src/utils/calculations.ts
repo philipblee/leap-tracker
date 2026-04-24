@@ -38,8 +38,10 @@ export const calcPortfolioSummary = (summaries: PositionSummary[]) => {
 export const formatCurrency = (value: number): string =>
   new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD' }).format(value);
 
-export const formatPct = (value: number): string =>
-  `${value >= 0 ? '+' : ''}${value.toFixed(2)}%`;
+export const formatPct = (value: number | null | undefined): string => {
+  if (value == null) return '—';
+  return `${value >= 0 ? '+' : ''}${value.toFixed(2)}%`;
+};
 
 export const formatDate = (date: string): string => {
   if (!date || date === '—') return '—';
