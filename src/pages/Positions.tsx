@@ -13,7 +13,7 @@ function Positions() {
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [accountFilter, setAccountFilter] = useState('ALL');
-  const [sortColumn, setSortColumn] = useState('');
+  const [sortColumn, setSortColumn] = useState('Ticker');
   const [sortDirection, setSortDirection] = useState<'asc' | 'desc'>('asc');
   const [showAddModal, setShowAddModal] = useState(false);
   const [selectedSummary, setSelectedSummary] = useState<PositionSummary | null>(null);

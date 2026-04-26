@@ -17,7 +17,7 @@ function ClosedPositions() {
   const [loading, setLoading] = useState(true);
   const [accountFilter, setAccountFilter] = useState('ALL');
   const [yearFilter, setYearFilter] = useState('ALL');
-  const [sortColumn, setSortColumn] = useState<string>('');
+  const [sortColumn, setSortColumn] = useState<string>('Ticker');
   const [sortDirection, setSortDirection] = useState<'asc' | 'desc'>('asc');
   const [detailSummary, setDetailSummary] = useState<PositionSummary | null>(null);
 
@@ -123,7 +123,7 @@ function ClosedPositions() {
         <table style={styles.table}>
           <thead>
             <tr>
-              {['Account','Ticker','Type','Strike','Expiry','Contracts','Cost Basis','Proceeds','Last Sell Date','Realized P&L $','Realized P&L %'].map(h => (
+              {['Ticker','Type','Strike','Expiry','Contracts','Cost Basis','Proceeds','Last Sell Date','Realized P&L $','Realized P&L %','Account'].map(h => (
                 <th
                   key={h}
                   style={{ ...styles.th, cursor: sortableColumns.has(h) ? 'pointer' : 'default' }}
@@ -150,7 +150,6 @@ function ClosedPositions() {
 
               return (
                 <tr key={position.id} style={{ ...styles.tr, cursor: 'pointer' }} onClick={() => setDetailSummary(s)}>
-                  <td style={styles.td}>{position.account}</td>
                   <td style={styles.td}>{position.ticker}</td>
                   <td style={styles.td}>{position.optionType}</td>
                   <td style={styles.td}>${position.strike}</td>
@@ -165,13 +164,14 @@ function ClosedPositions() {
                   <td style={{ ...styles.td, color: pct >= 0 ? '#00ff88' : '#ff4444' }}>
                     {formatPct(pct)}
                   </td>
+                  <td style={styles.td}>{position.account}</td>
                 </tr>
               );
             })}
           </tbody>
           <tfoot>
             <tr style={{ backgroundColor: '#2a2a3e' }}>
-              <td style={styles.td} colSpan={5}><strong>TOTAL</strong></td>
+              <td style={styles.td} colSpan={4}><strong>TOTAL</strong></td>
               <td style={styles.td}>
                 <strong>
                   {filtered.reduce((sum, s) =>
@@ -188,6 +188,7 @@ function ClosedPositions() {
               <td style={{ ...styles.td, color: totalRealizedPct >= 0 ? '#00ff88' : '#ff4444' }}>
                 <strong>{formatPct(totalRealizedPct)}</strong>
               </td>
+              <td style={styles.td}></td>
             </tr>
           </tfoot>
         </table>
