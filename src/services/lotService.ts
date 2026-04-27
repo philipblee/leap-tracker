@@ -52,6 +52,43 @@ export const deleteLot = async (id: string): Promise<void> => {
   await deleteDoc(doc(db, COLLECTION, id));
 };
 
+// Close specific lots with explicit per-lot quantities.
+// sellPrice is the total proceeds for all contracts sold across all selections.
+export const closeLotsManual = async (
+  positionId: string,
+  selections: { lot: Lot; contractsToClose: number }[],
+  sellDate: string,
+  sellPrice: number
+): Promise<void> => {
+  const totalContractsSold = selections.reduce((sum, s) => sum + s.contractsToClose, 0);
+
+  for (const { lot, contractsToClose } of selections) {
+    const lotFraction = contractsToClose / lot.contracts;
+    const allocatedCost = lotFraction * lot.costBasis;
+    const allocatedProceeds = totalContractsSold > 0
+      ? (contractsToClose / totalContractsSold) * sellPrice
+      : 0;
+    const realizedPnl = allocatedProceeds - allocatedCost;
+
+    if (contractsToClose === lot.contracts) {
+      await updateLot(lot.id!, {
+        isOpen: false, sellDate, sellPrice: allocatedProceeds,
+        contractsSold: contractsToClose, realizedPnl
+      });
+    } else {
+      await updateLot(lot.id!, {
+        contracts: lot.contracts - contractsToClose,
+        costBasis: (1 - lotFraction) * lot.costBasis
+      });
+      await addLot({
+        positionId, buyDate: lot.buyDate, contracts: contractsToClose,
+        costBasis: allocatedCost, isOpen: false, sellDate,
+        sellPrice: allocatedProceeds, contractsSold: contractsToClose, realizedPnl
+      });
+    }
+  }
+};
+
 // Close contracts FIFO across open lots.
 // sellPrice is the total proceeds for all contractsSold.
 export const getAllLots = async (): Promise<Lot[]> => {

@@ -1,7 +1,7 @@
-import { useState } from 'react';
-import { closeLotsFIFO } from '../services/lotService';
+import { useState, useEffect } from 'react';
+import { getOpenLots, closeLotsManual } from '../services/lotService';
 import { updatePosition } from '../services/positionService';
-import type { PositionSummary } from '../types';
+import type { Lot, PositionSummary } from '../types';
 import { formatCurrency } from '../utils/calculations';
 
 interface Props {
@@ -19,10 +19,37 @@ function ClosePositionModal({ summary, onClose, onSaved }: Props) {
   });
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
+  const [openLots, setOpenLots] = useState<Lot[]>([]);
+  const [lotSelections, setLotSelections] = useState<Record<string, { selected: boolean; contractsToClose: number }>>({});
+
+  useEffect(() => {
+    getOpenLots(position.id!).then(lots => {
+      const sorted = [...lots].sort((a, b) => new Date(a.buyDate).getTime() - new Date(b.buyDate).getTime());
+      setOpenLots(sorted);
+      const initial: Record<string, { selected: boolean; contractsToClose: number }> = {};
+      sorted.forEach(lot => {
+        initial[lot.id!] = { selected: true, contractsToClose: lot.contracts };
+      });
+      setLotSelections(initial);
+    });
+  }, [position.id]);
 
   const handleChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     setForm(prev => ({ ...prev, [e.target.name]: e.target.value }));
   };
+
+  const toggleLot = (lotId: string, selected: boolean) => {
+    setLotSelections(prev => ({ ...prev, [lotId]: { ...prev[lotId], selected } }));
+  };
+
+  const setLotContracts = (lotId: string, contractsToClose: number) => {
+    setLotSelections(prev => ({ ...prev, [lotId]: { ...prev[lotId], contractsToClose } }));
+  };
+
+  const totalSelectedContracts = openLots.reduce((sum, lot) => {
+    const sel = lotSelections[lot.id!];
+    return sum + (sel?.selected ? sel.contractsToClose : 0);
+  }, 0);
 
   const handleSubmit = async () => {
     if (!form.sellDate || !form.sellPrice || !form.contractsSold) {
@@ -34,11 +61,19 @@ function ClosePositionModal({ summary, onClose, onSaved }: Props) {
       setError(`Cannot sell more than ${summary.openContracts} open contracts`);
       return;
     }
+    if (openLots.length > 0 && totalSelectedContracts !== contracts) {
+      setError(`Selected lot total (${totalSelectedContracts}) must match contracts to sell (${contracts})`);
+      return;
+    }
+
     setSaving(true);
     try {
-      await closeLotsFIFO(position.id!, contracts, form.sellDate, Number(form.sellPrice));
-      // Mark position closed if all open contracts are being sold
-      if (contracts >= summary.openContracts) {
+      const selections = openLots
+        .filter(lot => lotSelections[lot.id!]?.selected && lotSelections[lot.id!].contractsToClose > 0)
+        .map(lot => ({ lot, contractsToClose: lotSelections[lot.id!].contractsToClose }));
+      await closeLotsManual(position.id!, selections, form.sellDate, Number(form.sellPrice));
+      const remainingLots = await getOpenLots(position.id!);
+      if (remainingLots.length === 0) {
         await updatePosition(position.id!, { isOpen: false });
       }
       onSaved();
@@ -48,12 +83,14 @@ function ClosePositionModal({ summary, onClose, onSaved }: Props) {
     setSaving(false);
   };
 
-  // Preview P&L using average cost per contract across all open lots
-  const avgCostPerContract = summary.openContracts > 0
-    ? summary.totalCostBasis / summary.openContracts
-    : 0;
-  const previewPnl = form.sellPrice && form.contractsSold
-    ? Number(form.sellPrice) - avgCostPerContract * Number(form.contractsSold)
+  const selectedCostBasis = openLots.reduce((sum, lot) => {
+    const sel = lotSelections[lot.id!];
+    if (!sel?.selected || lot.contracts === 0) return sum;
+    return sum + (sel.contractsToClose / lot.contracts) * lot.costBasis;
+  }, 0);
+
+  const previewPnl = form.sellPrice && totalSelectedContracts > 0
+    ? Number(form.sellPrice) - selectedCostBasis
     : null;
 
   return (
@@ -83,7 +120,54 @@ function ClosePositionModal({ summary, onClose, onSaved }: Props) {
             min="1"
             max={summary.openContracts}
           />
+        </div>
 
+        {openLots.length > 0 && (
+          <div style={styles.lotsSection}>
+            <div style={styles.lotsHeader}>
+              <span style={styles.lotsSectionTitle}>Select Lots to Close</span>
+              <span style={{ fontSize: '13px', color: totalSelectedContracts === Number(form.contractsSold) ? '#00ff88' : '#ff4444' }}>
+                Total selected: {totalSelectedContracts}
+              </span>
+            </div>
+            <div style={styles.lotsTableHeader}>
+              <span />
+              <span style={styles.lotColHeader}>Buy Date</span>
+              <span style={styles.lotColHeader}>Buy Price</span>
+              <span style={styles.lotColHeader}>Avail</span>
+              <span style={styles.lotColHeader}>To Close</span>
+            </div>
+            {openLots.map(lot => {
+              const sel = lotSelections[lot.id!];
+              if (!sel) return null;
+              const pricePerContract = lot.contracts > 0 ? lot.costBasis / lot.contracts : 0;
+              return (
+                <div key={lot.id} style={{ ...styles.lotRow, opacity: sel.selected ? 1 : 0.45 }}>
+                  <input
+                    type="checkbox"
+                    checked={sel.selected}
+                    onChange={e => toggleLot(lot.id!, e.target.checked)}
+                    style={styles.checkbox}
+                  />
+                  <span style={styles.lotCell}>{lot.buyDate}</span>
+                  <span style={styles.lotCell}>{formatCurrency(pricePerContract)}</span>
+                  <span style={styles.lotCell}>{lot.contracts}</span>
+                  <input
+                    type="number"
+                    min="0"
+                    max={lot.contracts}
+                    value={sel.contractsToClose}
+                    onChange={e => setLotContracts(lot.id!, Number(e.target.value))}
+                    disabled={!sel.selected}
+                    style={styles.lotInput}
+                  />
+                </div>
+              );
+            })}
+          </div>
+        )}
+
+        <div style={{ ...styles.grid, marginTop: '16px' }}>
           <label style={styles.label}>Sell Price ($)</label>
           <input
             style={styles.input}
@@ -133,7 +217,7 @@ const styles: { [key: string]: React.CSSProperties } = {
   },
   modal: {
     backgroundColor: '#1a1a2e', padding: '32px', borderRadius: '16px',
-    width: '520px', maxWidth: '90vw'
+    width: '640px', maxWidth: '95vw', maxHeight: '90vh', overflowY: 'auto'
   },
   title: { color: '#fff', margin: '0 0 20px 0' },
   summary: {
@@ -146,7 +230,32 @@ const styles: { [key: string]: React.CSSProperties } = {
   label: { color: '#aaa', fontSize: '14px' },
   input: {
     padding: '8px 12px', backgroundColor: '#2a2a3e', color: '#fff',
-    border: '1px solid #333', borderRadius: '6px', fontSize: '14px', width: '100%'
+    border: '1px solid #333', borderRadius: '6px', fontSize: '14px', width: '100%',
+    boxSizing: 'border-box'
+  },
+  lotsSection: {
+    backgroundColor: '#0f0f1a', borderRadius: '8px', padding: '12px', marginTop: '20px'
+  },
+  lotsHeader: {
+    display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '10px'
+  },
+  lotsSectionTitle: { color: '#aaa', fontSize: '13px', fontWeight: 'bold' },
+  lotsTableHeader: {
+    display: 'grid', gridTemplateColumns: '20px 1fr 1fr 50px 80px',
+    gap: '8px', paddingBottom: '6px',
+    borderBottom: '1px solid #2a2a3e', marginBottom: '6px'
+  },
+  lotColHeader: { color: '#555', fontSize: '11px', textTransform: 'uppercase' },
+  lotRow: {
+    display: 'grid', gridTemplateColumns: '20px 1fr 1fr 50px 80px',
+    gap: '8px', alignItems: 'center', paddingBottom: '6px'
+  },
+  lotCell: { color: '#ccc', fontSize: '13px' },
+  checkbox: { cursor: 'pointer', accentColor: '#00ff88' },
+  lotInput: {
+    padding: '4px 6px', backgroundColor: '#2a2a3e', color: '#fff',
+    border: '1px solid #333', borderRadius: '4px', fontSize: '13px', width: '100%',
+    boxSizing: 'border-box'
   },
   pnlPreview: {
     display: 'flex', gap: '12px', alignItems: 'center',
