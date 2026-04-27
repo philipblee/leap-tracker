@@ -61,7 +61,8 @@ export const findOrCreatePosition = async (
     where('optionType', '==', optionType),
     where('strike', '==', strike),
     where('expiry', '==', expiry),
-    where('account', '==', account)
+    where('account', '==', account),
+    where('isOpen', '==', true)
   );
   const snapshot = await getDocs(q);
   if (!snapshot.empty) {
