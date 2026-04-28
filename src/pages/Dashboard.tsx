@@ -125,6 +125,36 @@ function Dashboard() {
           </ResponsiveContainer>
         )}
       </div>
+
+      {/* Snapshot history table */}
+      {snapshots.length > 0 && (
+        <div style={styles.tableContainer}>
+          <h3 style={{ color: '#fff', margin: '0 0 16px 0' }}>Snapshot History</h3>
+          <div style={{ overflowX: 'auto' }}>
+            <table style={styles.table}>
+              <thead>
+                <tr>
+                  {['Date', 'Current Value', 'Total Invested', 'Unrealized Gain', 'Realized Gain', 'Total Gain'].map(h => (
+                    <th key={h} style={styles.th}>{h}</th>
+                  ))}
+                </tr>
+              </thead>
+              <tbody>
+                {[...snapshots].sort((a, b) => b.date.localeCompare(a.date)).map((s, i) => (
+                  <tr key={s.id ?? s.date} style={{ backgroundColor: i % 2 === 0 ? '#0f0f1a' : '#1a1a2e' }}>
+                    <td style={styles.td}>{s.date}</td>
+                    <td style={styles.td}>{formatCurrency(s.totalValue)}</td>
+                    <td style={styles.td}>{formatCurrency(s.totalCostBasis)}</td>
+                    <td style={{ ...styles.td, color: s.unrealizedPnl >= 0 ? '#00ff88' : '#ff4444' }}>{formatCurrency(s.unrealizedPnl)}</td>
+                    <td style={{ ...styles.td, color: s.realizedPnl >= 0 ? '#00ff88' : '#ff4444' }}>{formatCurrency(s.realizedPnl)}</td>
+                    <td style={{ ...styles.td, color: s.totalPnl >= 0 ? '#00ff88' : '#ff4444' }}>{formatCurrency(s.totalPnl)}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
@@ -156,7 +186,11 @@ const styles: { [key: string]: React.CSSProperties } = {
   chartContainer: { backgroundColor: '#1a1a2e', padding: '24px', borderRadius: '12px' },
   chartHeader:   { display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '20px' },
   toggle:        { display: 'flex', gap: '8px' },
-  toggleBtn:     { padding: '8px 16px', border: 'none', borderRadius: '6px', cursor: 'pointer', fontWeight: 'bold' }
+  toggleBtn:     { padding: '8px 16px', border: 'none', borderRadius: '6px', cursor: 'pointer', fontWeight: 'bold' },
+  tableContainer: { backgroundColor: '#1a1a2e', padding: '24px', borderRadius: '12px', marginTop: '24px' },
+  table:         { width: '100%', borderCollapse: 'collapse' },
+  th:            { color: '#aaa', padding: '10px 12px', textAlign: 'left', borderBottom: '1px solid #333', whiteSpace: 'nowrap' as const },
+  td:            { padding: '10px 12px', color: '#fff', whiteSpace: 'nowrap' as const }
 };
 
 export default Dashboard;
