@@ -32,6 +32,7 @@ function NavBar() {
         <Link to="/positions" style={linkStyle('/positions')}>Open Positions</Link>
         <Link to="/closed" style={linkStyle('/closed')}>Closed Positions</Link>
         <Link to="/import" style={linkStyle('/import')}>Import CSV</Link>
+        <Link to="/pending" style={linkStyle('/pending')}>Pending Closes</Link>
       </div>
     </nav>
   );

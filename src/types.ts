@@ -10,6 +10,8 @@ export interface Position {
   expiry: string;
   account: Account;
   isOpen: boolean;
+  buyDate: string;
+  costBasis: number;
   currentValue?: number;
   lastPriceDate?: string;
   lastPrice?: number;
@@ -72,4 +74,18 @@ export interface Snapshot {
 export type Config = {
   pinHash: string;
   accounts: string[];
+}
+
+export interface PendingClose {
+  id?: string;
+  positionId: string;
+  ticker: string;
+  strike: number;
+  expiry: string;
+  account: string;
+  contractsToClose: number;
+  sellDate: string;
+  sellPrice: number;
+  importSource: string;
+  createdAt: string;
 }

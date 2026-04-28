@@ -57,7 +57,9 @@ export const findOrCreatePosition = async (
   optionType: Position['optionType'],
   strike: number,
   expiry: string,
-  account: string
+  account: string,
+  buyDate: string,
+  costBasis: number
 ): Promise<string> => {
   const q = query(
     collection(db, COLLECTION),
@@ -66,13 +68,15 @@ export const findOrCreatePosition = async (
     where('strike', '==', strike),
     where('expiry', '==', expiry),
     where('account', '==', account),
-    where('isOpen', '==', true)
+    where('isOpen', '==', true),
+    where('buyDate', '==', buyDate),
+    where('costBasis', '==', costBasis)
   );
   const snapshot = await getDocs(q);
   if (!snapshot.empty) {
     return snapshot.docs[0].id;
   }
-  return addPosition({ ticker, optionType, strike, expiry, account, isOpen: true });
+  return addPosition({ ticker, optionType, strike, expiry, account, isOpen: true, buyDate, costBasis });
 };
 
 // Aggregate lot data into a PositionSummary for each position.

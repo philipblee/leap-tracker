@@ -8,14 +8,15 @@ interface Props {
   summary: PositionSummary;
   onClose: () => void;
   onSaved: () => void;
+  prefill?: { sellDate?: string; sellPrice?: string; contractsSold?: string };
 }
 
-function ClosePositionModal({ summary, onClose, onSaved }: Props) {
+function ClosePositionModal({ summary, onClose, onSaved, prefill }: Props) {
   const { position } = summary;
   const [form, setForm] = useState({
-    sellDate: new Date().toISOString().split('T')[0],
-    sellPrice: '',
-    contractsSold: String(summary.openContracts)
+    sellDate: prefill?.sellDate ?? new Date().toISOString().split('T')[0],
+    sellPrice: prefill?.sellPrice ?? '',
+    contractsSold: prefill?.contractsSold ?? String(summary.openContracts)
   });
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');

@@ -113,6 +113,7 @@ function Positions() {
       case 'Ticker':       aVal = a.position.ticker;      bVal = b.position.ticker; break;
       case 'Account':      aVal = a.position.account;     bVal = b.position.account; break;
       case 'Expiry':       aVal = new Date(a.position.expiry).getTime(); bVal = new Date(b.position.expiry).getTime(); break;
+      case 'Buy Date':     aVal = a.position.buyDate ?? ''; bVal = b.position.buyDate ?? ''; break;
       case 'Cost Basis':   aVal = a.totalCostBasis;       bVal = b.totalCostBasis; break;
       case 'Current Value': aVal = a.currentValue ?? a.totalCostBasis; bVal = b.currentValue ?? b.totalCostBasis; break;
       case 'P&L $':        aVal = a.unrealizedPnl ?? 0;   bVal = b.unrealizedPnl ?? 0; break;
@@ -124,7 +125,7 @@ function Positions() {
     return 0;
   });
 
-  const sortableColumns = new Set(['Account', 'Ticker', 'Expiry', 'Current Value', 'Cost Basis', 'P&L $', 'P&L %']);
+  const sortableColumns = new Set(['Account', 'Ticker', 'Expiry', 'Buy Date', 'Current Value', 'Cost Basis', 'P&L $', 'P&L %']);
   const failedIds = new Set(refreshStatus?.failed.map(f => f.id) ?? []);
 
   if (loading) return <p style={{ color: '#fff' }}>Loading...</p>;
@@ -168,7 +169,7 @@ function Positions() {
           <thead>
             <tr>
               {(viewMode === 'normal'
-                ? ['Ticker','Type','Strike','Expiry','Qty','Current Value','Cost Basis','P&L $','P&L %','Account','Actions']
+                ? ['Ticker','Type','Strike','Expiry','Buy Date','Qty','Current Value','Cost Basis','P&L $','P&L %','Account','Actions']
                 : ['Position','Qty','Current Value','Cost Basis','P&L $','P&L %','Account','Actions']
               ).map(h => (
                 <th
@@ -184,17 +185,25 @@ function Positions() {
           <tbody>
             {sorted.map(s => {
               const { position } = s;
+              const hasTBD = String(position.ticker) === 'TBD' || String(position.strike) === 'TBD' || String(position.expiry) === 'TBD';
               return (
                 <tr key={position.id} style={{ ...styles.tr, cursor: 'pointer' }} onClick={() => setDetailSummary(s)}>
                   {viewMode === 'normal' ? (
                     <>
-                      <td style={styles.td}>{position.ticker}</td>
+                      <td style={styles.td}>
+                        {position.ticker}
+                        {hasTBD && <span title="Contains TBD fields — edit to fill in" style={{ marginLeft: '6px', color: '#ff9900' }}>⚠️</span>}
+                      </td>
                       <td style={styles.td}>{position.optionType}</td>
                       <td style={styles.td}>${position.strike}</td>
                       <td style={styles.td}>{position.expiry}</td>
+                      <td style={styles.td}>{position.buyDate ?? s.lots.find(l => l.isOpen)?.buyDate ?? '—'}</td>
                     </>
                   ) : (
-                    <td style={styles.td}>{position.ticker} {position.optionType} ${position.strike} {position.expiry}</td>
+                    <td style={styles.td}>
+                      {position.ticker} {position.optionType} ${position.strike} {position.expiry}
+                      {hasTBD && <span title="Contains TBD fields — edit to fill in" style={{ marginLeft: '6px', color: '#ff9900' }}>⚠️</span>}
+                    </td>
                   )}
                   <td style={styles.td}>{s.openContracts}</td>
                   <td style={{ ...styles.td, color: failedIds.has(position.id!) ? '#ff9900' : '#fff' }}>
@@ -217,7 +226,7 @@ function Positions() {
             })}
             {/* Totals row */}
             <tr>
-              <td style={styles.totalTd} colSpan={viewMode === 'normal' ? 4 : 1}><strong>TOTAL</strong></td>
+              <td style={styles.totalTd} colSpan={viewMode === 'normal' ? 5 : 1}><strong>TOTAL</strong></td>
               <td style={styles.totalTd}><strong>{filtered.reduce((sum, s) => sum + s.openContracts, 0)}</strong></td>
               <td style={styles.totalTd}><strong>{formatCurrency(totalCurrentValue)}</strong></td>
               <td style={styles.totalTd}><strong>{formatCurrency(totalCostBasis)}</strong></td>

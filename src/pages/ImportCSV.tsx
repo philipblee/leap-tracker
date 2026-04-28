@@ -1,15 +1,17 @@
 import { useState } from 'react';
 import {
-  parseBuyCSV, parseSellCSV, parseFidelityCSV, parseFidelityClosedCSV, detectFormat
+  parseBuyCSV, parseSellCSV, parseFidelityCSV, parseFidelityClosedCSV,
+  parseFidelityActivity, detectFormat
 } from '../utils/csvParser';
-import type { BuyImportRow, SellImportRow, ClosedImportRow } from '../utils/csvParser';
+import type { BuyImportRow, SellImportRow, ClosedImportRow, ActivityImportRow } from '../utils/csvParser';
 import { findOrCreatePosition, getOpenPositions } from '../services/positionService';
 import { addLot, closeLotsFIFO } from '../services/lotService';
+import { createPendingClose } from '../services/pendingCloseService';
 import { updatePosition } from '../services/positionService';
 import { formatCurrency } from '../utils/calculations';
 
 type ImportMode = 'buy' | 'sell';
-type PreviewRow = BuyImportRow | SellImportRow | ClosedImportRow;
+type PreviewRow = BuyImportRow | SellImportRow | ClosedImportRow | ActivityImportRow;
 
 const normalizeDate = (date: string): string => {
   if (!date || !date.includes('/')) return date;
@@ -22,7 +24,10 @@ function ImportCSV() {
   const [preview, setPreview] = useState<PreviewRow[]>([]);
   const [errors, setErrors] = useState<{ row: number; message: string }[]>([]);
   const [saving, setSaving] = useState(false);
-  const [savedResult, setSavedResult] = useState<{ positions: number; lots: number; skipped: number } | null>(null);
+  const [savedResult, setSavedResult] = useState<{
+    positions: number; lots: number; skipped: number;
+    pendingCloses?: number; tbdCount?: number; failedSells?: number;
+  } | null>(null);
   const [showSkipped, setShowSkipped] = useState(false);
   const [detectedFormat, setDetectedFormat] = useState('');
 
@@ -48,6 +53,10 @@ function ImportCSV() {
       const result = await parseFidelityClosedCSV(file);
       setPreview(result.valid);
       setErrors(result.errors);
+    } else if (format === 'fidelity_activity') {
+      const result = await parseFidelityActivity(file);
+      setPreview(result.valid);
+      setErrors(result.errors);
     } else if (format === 'custom_buy' || mode === 'buy') {
       const result = await parseBuyCSV(file);
       setPreview(result.valid);
@@ -63,12 +72,51 @@ function ImportCSV() {
     setSaving(true);
     const skipped = errors.length;
     try {
-      if (detectedFormat === 'fidelity_closed') {
+      if (detectedFormat === 'fidelity_activity') {
+        const rows = preview as ActivityImportRow[];
+        const buys = rows.filter(r => r.transactionType === 'BUY') as (BuyImportRow & { transactionType: 'BUY' })[];
+        const sells = rows.filter(r => r.transactionType === 'SELL') as (SellImportRow & { transactionType: 'SELL' })[];
+
+        const tbdCount = buys.filter(r => String((r as any).strike) === 'TBD' || (r as any).expiry === 'TBD').length;
+        const buyKeys = new Set(buys.map(r => `${r.ticker}|${r.optionType}|${r.strike}|${r.expiry}|${r.account}`));
+
+        for (const row of buys) {
+          const positionId = await findOrCreatePosition(row.ticker, row.optionType, row.strike, row.expiry, row.account, row.buyDate, row.costBasis);
+          await addLot({ positionId, buyDate: row.buyDate, contracts: row.contracts, costBasis: row.costBasis, isOpen: true });
+        }
+
+        const openPositions = await getOpenPositions();
+        let pendingCount = 0;
+        let failedSells = 0;
+        for (const row of sells) {
+          const matches = openPositions.filter(p =>
+            p.ticker === row.ticker && p.optionType === row.optionType &&
+            p.strike === row.strike && p.expiry === row.expiry
+          );
+          if (matches.length === 1) {
+            await createPendingClose({
+              positionId: matches[0].id!,
+              ticker: row.ticker,
+              strike: row.strike,
+              expiry: row.expiry,
+              account: row.account,
+              contractsToClose: row.contractsSold,
+              sellDate: row.sellDate,
+              sellPrice: row.sellPrice,
+              importSource: 'fidelity_activity'
+            });
+            pendingCount++;
+          } else {
+            failedSells++;
+          }
+        }
+        setSavedResult({ positions: buyKeys.size, lots: buys.length, skipped, pendingCloses: pendingCount, tbdCount, failedSells });
+      } else if (detectedFormat === 'fidelity_closed') {
         const rows = preview as ClosedImportRow[];
         const uniqueKeys = new Set(rows.map(r => `${r.ticker}|${r.optionType}|${r.strike}|${r.expiry}|${r.account}`));
         for (const row of rows) {
           const positionId = await findOrCreatePosition(
-            row.ticker, row.optionType, row.strike, row.expiry, row.account
+            row.ticker, row.optionType, row.strike, row.expiry, row.account, row.buyDate, row.costBasis
           );
           await addLot({
             positionId,
@@ -89,7 +137,7 @@ function ImportCSV() {
         const uniqueKeys = new Set(rows.map(r => `${r.ticker}|${r.optionType}|${r.strike}|${r.expiry}|${r.account}`));
         for (const row of rows) {
           const positionId = await findOrCreatePosition(
-            row.ticker, row.optionType, row.strike, row.expiry, row.account
+            row.ticker, row.optionType, row.strike, row.expiry, row.account, row.buyDate, row.costBasis
           );
           await addLot({
             positionId,
@@ -127,7 +175,7 @@ function ImportCSV() {
     setSaving(false);
   };
 
-  const isFidelity = detectedFormat === 'fidelity' || detectedFormat === 'fidelity_closed';
+  const isFidelity = detectedFormat === 'fidelity' || detectedFormat === 'fidelity_closed' || detectedFormat === 'fidelity_activity';
   const isBuyMode = detectedFormat === 'fidelity' || detectedFormat === 'custom_buy' || (detectedFormat === '' && mode === 'buy');
 
   return (
@@ -185,13 +233,41 @@ function ImportCSV() {
         <div>
           <h3 style={styles.previewTitle}>
             Preview — {preview.length} row(s) ready to import
-            {isFidelity && detectedFormat !== 'fidelity_closed' && (
+            {isFidelity && detectedFormat !== 'fidelity_closed' && detectedFormat !== 'fidelity_activity' && (
               <span style={styles.warningBadge}> ⚠️ Buy dates set to placeholder — edit after import</span>
             )}
           </h3>
           <div style={styles.tableWrapper}>
             <table style={styles.table}>
-              {detectedFormat === 'fidelity_closed' ? (
+              {detectedFormat === 'fidelity_activity' ? (
+                <>
+                  <thead><tr>
+                    {['Txn','Ticker','Type','Strike','Expiry','Account','Date','Contracts','Amount'].map(h => (
+                      <th key={h} style={styles.th}>{h}</th>
+                    ))}
+                  </tr></thead>
+                  <tbody>
+                    {(preview as ActivityImportRow[]).map((p, i) => {
+                      const isBuy = p.transactionType === 'BUY';
+                      const buyRow = p as BuyImportRow & { transactionType: 'BUY' };
+                      const sellRow = p as SellImportRow & { transactionType: 'SELL' };
+                      return (
+                        <tr key={i} style={{ ...styles.tr, backgroundColor: isBuy ? '#001a0d' : '#1a0000' }}>
+                          <td style={{ ...styles.td, color: isBuy ? '#00ff88' : '#ff4444', fontWeight: 'bold' }}>{p.transactionType}</td>
+                          <td style={styles.td}>{p.ticker}</td>
+                          <td style={styles.td}>{p.optionType}</td>
+                          <td style={styles.td}>${p.strike}</td>
+                          <td style={styles.td}>{p.expiry}</td>
+                          <td style={styles.td}>{p.account}</td>
+                          <td style={styles.td}>{isBuy ? buyRow.buyDate : sellRow.sellDate}</td>
+                          <td style={styles.td}>{isBuy ? buyRow.contracts : sellRow.contractsSold}</td>
+                          <td style={styles.td}>{formatCurrency(isBuy ? buyRow.costBasis : sellRow.sellPrice)}</td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </>
+              ) : detectedFormat === 'fidelity_closed' ? (
                 <>
                   <thead><tr>
                     {['Ticker','Type','Strike','Expiry','Contracts','Account','Buy Date','Sell Date','Cost Basis','Proceeds','Realized P&L'].map(h => (
@@ -279,10 +355,20 @@ function ImportCSV() {
 
       {savedResult && (
         <div style={styles.successBox}>
-          <p style={styles.success}>
-            ✅ Imported {savedResult.positions} position{savedResult.positions !== 1 ? 's' : ''}, {savedResult.lots} lot{savedResult.lots !== 1 ? 's' : ''} created.
-            {savedResult.skipped > 0 && <span> {savedResult.skipped} row{savedResult.skipped !== 1 ? 's' : ''} skipped.</span>}
-          </p>
+          {savedResult.pendingCloses !== undefined ? (
+            <>
+              {savedResult.lots > 0 && <p style={styles.success}>✓ {savedResult.lots} buy{savedResult.lots !== 1 ? 's' : ''} imported successfully</p>}
+              {savedResult.pendingCloses > 0 && <p style={{ ...styles.success, color: '#00d4ff' }}>⏳ {savedResult.pendingCloses} sell{savedResult.pendingCloses !== 1 ? 's' : ''} queued for review in Pending Closes</p>}
+              {(savedResult.tbdCount ?? 0) > 0 && <p style={{ ...styles.success, color: '#ff9900' }}>⚠️ {savedResult.tbdCount} position{savedResult.tbdCount !== 1 ? 's' : ''} with TBD fields — edit after import</p>}
+              {(savedResult.failedSells ?? 0) > 0 && <p style={{ ...styles.success, color: '#ff4444' }}>❌ {savedResult.failedSells} sell{savedResult.failedSells !== 1 ? 's' : ''} failed — no matching open position found</p>}
+              {savedResult.skipped > 0 && <p style={{ ...styles.success, color: '#ff9900' }}>⚠️ {savedResult.skipped} row{savedResult.skipped !== 1 ? 's' : ''} skipped (parse errors)</p>}
+            </>
+          ) : (
+            <p style={styles.success}>
+              ✅ Imported {savedResult.positions} position{savedResult.positions !== 1 ? 's' : ''}, {savedResult.lots} lot{savedResult.lots !== 1 ? 's' : ''} created.
+              {savedResult.skipped > 0 && <span> {savedResult.skipped} row{savedResult.skipped !== 1 ? 's' : ''} skipped.</span>}
+            </p>
+          )}
           {savedResult.skipped > 0 && errors.length > 0 && (
             <div>
               <button style={styles.toggleSkippedBtn} onClick={() => setShowSkipped(v => !v)}>

@@ -5,6 +5,7 @@ import Dashboard from './pages/Dashboard';
 import Positions from './pages/Positions';
 import ClosedPositions from './pages/ClosedPositions';
 import ImportCSV from './pages/ImportCSV';
+import PendingCloses from './pages/PendingCloses';
 import NavBar from './components/NavBar';
 
 class ErrorBoundary extends React.Component<
@@ -62,6 +63,7 @@ function App() {
                 <Route path="/positions" element={<Positions />} />
                 <Route path="/closed" element={<ClosedPositions />} />
                 <Route path="/import" element={<ImportCSV />} />
+                <Route path="/pending" element={<PendingCloses />} />
               </Routes>
             </div>
           </>

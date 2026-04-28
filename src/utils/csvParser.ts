@@ -52,7 +52,11 @@ export interface ParseResult<T> {
   errors: { row: number; message: string }[];
 }
 
-export type BrokerFormat = 'fidelity' | 'fidelity_closed' | 'custom_buy' | 'custom_sell' | 'unknown';
+export type ActivityImportRow =
+  | (BuyImportRow & { transactionType: 'BUY' })
+  | (SellImportRow & { transactionType: 'SELL' });
+
+export type BrokerFormat = 'fidelity' | 'fidelity_closed' | 'fidelity_activity' | 'custom_buy' | 'custom_sell' | 'unknown';
 
 export const detectFormat = (headers: string[]): BrokerFormat => {
   const h = headers.map(x => x.trim().toLowerCase());
@@ -60,6 +64,8 @@ export const detectFormat = (headers: string[]): BrokerFormat => {
     return 'fidelity_closed';
   if (h.includes('symbol') && h.includes('cost basis total') && h.includes('account name'))
     return 'fidelity';
+  if (h.includes('action') && h.some(x => x.includes('run date')))
+    return 'fidelity_activity';
   if (h.includes('ticker') && h.includes('cost_basis') && h.includes('buy_date'))
     return 'custom_buy';
   if (h.includes('ticker') && h.includes('sell_price') && h.includes('sell_date'))
@@ -182,7 +188,7 @@ export const parseFidelityCSV = (file: File): Promise<ParseResult<BuyImportRow>>
             optionType: parsed.optionType,
             strike: parsed.strike,
             expiry: parsed.expiry,
-            account: r['type']?.trim() ?? 'Unknown',
+            account: normalizeAccount(r['account name']?.trim() ?? r['account']?.trim() ?? 'Unknown'),
             buyDate: '1900-01-01',
             contracts,
             costBasis: cleanNumber(r['cost basis total'] ?? '0'),
@@ -228,6 +234,119 @@ export const parseFidelityClosedCSV = (file: File): Promise<ParseResult<ClosedIm
             contractsSold: contracts,
             realizedPnl: proceeds - costBasis
           });
+        });
+        resolve({ valid, errors });
+      }
+    });
+  });
+};
+
+const MONTH_MAP: Record<string, string> = {
+  JAN: '01', FEB: '02', MAR: '03', APR: '04', MAY: '05', JUN: '06',
+  JUL: '07', AUG: '08', SEP: '09', OCT: '10', NOV: '11', DEC: '12'
+};
+
+const normalizeRunDate = (date: string): string => {
+  const s = date.trim();
+  if (!s.includes('/')) return s;
+  const [m, d, y] = s.split('/');
+  return `${y}-${m.padStart(2, '0')}-${d.padStart(2, '0')}`;
+};
+
+export const normalizeAccount = (raw: string): string => {
+  const s = raw.trim();
+  if (/ira.?roth/i.test(s)) return 'IRA ROTH';
+  if (/ira.?roll/i.test(s)) return 'IRA';
+  if (/^ira/i.test(s)) return 'IRA';
+  if (/trust/i.test(s)) return 'Margin';
+  if (/di\s*individual/i.test(s)) return 'DI IND';
+  return s.replace(/\s*\$[\d,.KkMm]+.*$/, '').trim();
+};
+
+const parseActivityDescription = (description: string): {
+  ticker: string; optionType: OptionType; strike: number; expiry: string;
+} | null => {
+  const m = description.match(
+    /^(CALL|PUT)\s*\(([^)]+)\).*?([A-Z]{3})\s+(\d{1,2})\s+(\d{2,4})\s+\$(\d+(?:\.\d+)?)/i
+  );
+  if (!m) return null;
+  const [, type, ticker, mon, day, yy, strikeStr] = m;
+  const month = MONTH_MAP[mon.toUpperCase()];
+  if (!month) return null;
+  const year = yy.length === 4 ? yy : `20${yy}`;
+  return {
+    ticker: ticker.trim().toUpperCase(),
+    optionType: type.toUpperCase() as OptionType,
+    strike: Number(strikeStr),
+    expiry: `${year}-${month}-${day.padStart(2, '0')}`
+  };
+};
+
+const lenientParseDescription = (description: string): {
+  ticker: string; optionType: OptionType; strike: number; expiry: string;
+} | null => {
+  const m = description.match(/^(CALL|PUT)\s*\(([^)]+)\)/i);
+  if (!m) return null;
+  return {
+    ticker: m[2].trim().toUpperCase(),
+    optionType: m[1].toUpperCase() as OptionType,
+    strike: 'TBD' as any,
+    expiry: 'TBD'
+  };
+};
+
+export const parseFidelityActivity = (file: File): Promise<ParseResult<ActivityImportRow>> => {
+  return new Promise((resolve) => {
+    Papa.parse(file, {
+      header: true,
+      skipEmptyLines: true,
+      complete: (results) => {
+        const valid: ActivityImportRow[] = [];
+        const errors: { row: number; message: string }[] = [];
+        results.data.forEach((row: any, index: number) => {
+          const r = normalizeRow(row);
+          const n = index + 2;
+
+          const action = (r['action'] ?? '').toUpperCase();
+          const symbol = (r['symbol'] ?? '').trim();
+          const description = (r['description'] ?? '').trim();
+
+          const isOptionRow = symbol.startsWith('-') || /\b(CALL|PUT)\b/i.test(description);
+          if (!isOptionRow) return;
+
+          const isBuy = action.includes('BOUGHT') || action.includes('OPENING');
+          const isSell = action.includes('SOLD') || action.includes('CLOSING');
+          if (!isBuy && !isSell) return;
+
+          const parsed = parseActivityDescription(description)
+            ?? (symbol.startsWith('-') ? parseFidelitySymbol(symbol) : null)
+            ?? lenientParseDescription(description);
+          if (!parsed) {
+            errors.push({ row: n, message: `Cannot parse option details: ${description || symbol}` });
+            return;
+          }
+
+          const qty = Math.abs(Number((r['quantity'] ?? '0').toString().replace(/,/g, '')));
+          if (isNaN(qty) || qty <= 0) {
+            errors.push({ row: n, message: `Invalid quantity at row ${n}` });
+            return;
+          }
+
+          const amount = Math.abs(cleanNumber(r['amount'] ?? '0'));
+          const runDate = normalizeRunDate(r['run date'] ?? '');
+          if (!runDate) {
+            errors.push({ row: n, message: `Missing run date at row ${n}` });
+            return;
+          }
+
+          const accountRaw = r['account name'] ?? r['account name/number'] ?? r['account'] ?? '';
+          const account = normalizeAccount(accountRaw) || 'Unknown';
+
+          if (isBuy) {
+            valid.push({ ...parsed, account, buyDate: runDate, contracts: qty, costBasis: amount, transactionType: 'BUY' });
+          } else {
+            valid.push({ ...parsed, account, contractsSold: qty, sellDate: runDate, sellPrice: amount, transactionType: 'SELL' });
+          }
         });
         resolve({ valid, errors });
       }

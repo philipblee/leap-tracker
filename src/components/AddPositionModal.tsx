@@ -42,7 +42,9 @@ function AddPositionModal({ onClose, onSaved }: Props) {
         form.optionType,
         Number(form.strike),
         form.expiry,
-        form.account
+        form.account,
+        form.buyDate,
+        Number(form.costBasis)
       );
       await addLot({
         positionId,
