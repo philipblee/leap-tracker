@@ -50,7 +50,7 @@ function ClosedPositions() {
     }
   };
 
-  const sortableColumns = new Set(['Account', 'Ticker', 'Expiry', 'Cost Basis', 'Proceeds', 'Last Sell Date', 'Realized P&L $', 'Realized P&L %']);
+  const sortableColumns = new Set(['Account', 'Ticker', 'Expiry', 'Cost Basis', 'Buy Date', 'Proceeds', 'Last Sell Date', 'Realized P&L $', 'Realized P&L %']);
 
   const sorted = [...filtered].sort((a, b) => {
     if (!sortColumn) return 0;
@@ -61,6 +61,10 @@ function ClosedPositions() {
       case 'Ticker': aVal = a.position.ticker; bVal = b.position.ticker; break;
       case 'Account': aVal = a.position.account; bVal = b.position.account; break;
       case 'Expiry': aVal = new Date(a.position.expiry).getTime(); bVal = new Date(b.position.expiry).getTime(); break;
+      case 'Buy Date':
+        aVal = a.lots.map(l => l.buyDate).filter(Boolean).map(toSortableDate).sort()[0] ?? '';
+        bVal = b.lots.map(l => l.buyDate).filter(Boolean).map(toSortableDate).sort()[0] ?? '';
+        break;
       case 'Cost Basis':
         aVal = aClosedLots.reduce((sum, l) => sum + l.costBasis, 0);
         bVal = bClosedLots.reduce((sum, l) => sum + l.costBasis, 0);
@@ -123,7 +127,7 @@ function ClosedPositions() {
         <table style={styles.table}>
           <thead>
             <tr>
-              {['Ticker','Type','Strike','Expiry','Contracts','Cost Basis','Proceeds','Last Sell Date','Realized P&L $','Realized P&L %','Account'].map(h => (
+              {['Ticker','Type','Strike','Expiry','Contracts','Cost Basis','Buy Date','Proceeds','Last Sell Date','Realized P&L $','Realized P&L %','Account'].map(h => (
                 <th
                   key={h}
                   style={{ ...styles.th, cursor: sortableColumns.has(h) ? 'pointer' : 'default' }}
@@ -147,6 +151,7 @@ function ClosedPositions() {
                 .sort()
                 .at(-1) ?? '—';
               const pct = costBasis > 0 ? (s.realizedPnl / costBasis) * 100 : 0;
+              const earliestBuyDate = s.lots.map(l => l.buyDate).filter(Boolean).sort()[0] ?? '';
 
               return (
                 <tr key={position.id} style={{ ...styles.tr, cursor: 'pointer' }} onClick={() => setDetailSummary(s)}>
@@ -156,6 +161,7 @@ function ClosedPositions() {
                   <td style={styles.td}>{position.expiry}</td>
                   <td style={styles.td}>{contractsSold}</td>
                   <td style={styles.td}>{formatCurrency(costBasis)}</td>
+                  <td style={styles.td}>{formatDate(earliestBuyDate)}</td>
                   <td style={styles.td}>{formatCurrency(proceeds)}</td>
                   <td style={styles.td}>{formatDate(lastSellDate)}</td>
                   <td style={{ ...styles.td, color: s.realizedPnl >= 0 ? '#00ff88' : '#ff4444' }}>
@@ -180,6 +186,7 @@ function ClosedPositions() {
                 </strong>
               </td>
               <td style={styles.td}><strong>{formatCurrency(totalClosedCost)}</strong></td>
+              <td style={styles.td}></td>
               <td style={styles.td}><strong>{formatCurrency(totalProceeds)}</strong></td>
               <td style={styles.td}></td>
               <td style={{ ...styles.td, color: totalRealized >= 0 ? '#00ff88' : '#ff4444' }}>

@@ -23,6 +23,8 @@ interface LotForm {
   buyDate: string;
   contracts: string;
   costBasis: string;
+  sellDate: string;
+  sellPrice: string;
 }
 
 const getPriceDateColor = (lastPriceDate?: string): string => {
@@ -54,7 +56,7 @@ function PositionDetailModal({ summary, onClose, onSaved }: Props) {
 
   // Lot edit state — only one lot editable at a time
   const [editingLotId, setEditingLotId] = useState<string | null>(null);
-  const [lotForm, setLotForm] = useState<LotForm>({ buyDate: '', contracts: '', costBasis: '' });
+  const [lotForm, setLotForm] = useState<LotForm>({ buyDate: '', contracts: '', costBasis: '', sellDate: '', sellPrice: '' });
   const [savingLot, setSavingLot] = useState(false);
 
   const handlePosChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>) => {
@@ -80,7 +82,9 @@ function PositionDetailModal({ summary, onClose, onSaved }: Props) {
     setLotForm({
       buyDate: toInputDate(lot.buyDate),
       contracts: String(lot.isOpen ? lot.contracts : (lot.contractsSold ?? lot.contracts)),
-      costBasis: String(lot.costBasis)
+      costBasis: String(lot.costBasis),
+      sellDate: toInputDate(lot.sellDate ?? ''),
+      sellPrice: lot.sellPrice != null ? String(lot.sellPrice) : ''
     });
   };
 
@@ -94,6 +98,7 @@ function PositionDetailModal({ summary, onClose, onSaved }: Props) {
     setSavingLot(true);
     const newContracts = Number(lotForm.contracts);
     const newCostBasis = Number(lotForm.costBasis);
+    const newSellPrice = lotForm.sellPrice !== '' ? Number(lotForm.sellPrice) : undefined;
     const updates: Partial<Lot> = {
       buyDate: lotForm.buyDate,
       costBasis: newCostBasis,
@@ -102,8 +107,9 @@ function PositionDetailModal({ summary, onClose, onSaved }: Props) {
         : {
             contractsSold: newContracts,
             contracts: newContracts,
-            // Recalculate realized P&L when cost basis changes on a closed lot
-            ...(lot.sellPrice != null ? { realizedPnl: lot.sellPrice - newCostBasis } : {})
+            sellDate: lotForm.sellDate || undefined,
+            sellPrice: newSellPrice,
+            realizedPnl: newSellPrice != null ? newSellPrice - newCostBasis : undefined
           }
       )
     };
@@ -247,17 +253,21 @@ function PositionDetailModal({ summary, onClose, onSaved }: Props) {
                           <td style={styles.lotTd}>
                             <input style={styles.lotInput} name="buyDate" type="date" value={lotForm.buyDate} onChange={handleLotFormChange} />
                           </td>
-                          <td style={styles.lotTd}>{lot.sellDate ? formatDate(lot.sellDate) : '—'}</td>
+                          <td style={styles.lotTd}>
+                            <input style={styles.lotInput} name="sellDate" type="date" value={lotForm.sellDate} onChange={handleLotFormChange} />
+                          </td>
                           <td style={styles.lotTd}>
                             <input style={styles.lotInput} name="contracts" type="number" value={lotForm.contracts} onChange={handleLotFormChange} />
                           </td>
                           <td style={styles.lotTd}>
                             <input style={styles.lotInput} name="costBasis" type="number" value={lotForm.costBasis} onChange={handleLotFormChange} />
                           </td>
-                          <td style={styles.lotTd}>{lot.sellPrice != null ? formatCurrency(lot.sellPrice) : '—'}</td>
                           <td style={styles.lotTd}>
-                            {lot.sellPrice != null
-                              ? formatCurrency(lot.sellPrice - Number(lotForm.costBasis))
+                            <input style={styles.lotInput} name="sellPrice" type="number" value={lotForm.sellPrice} onChange={handleLotFormChange} />
+                          </td>
+                          <td style={styles.lotTd}>
+                            {lotForm.sellPrice !== ''
+                              ? formatCurrency(Number(lotForm.sellPrice) - Number(lotForm.costBasis))
                               : '—'}
                           </td>
                           <td style={styles.lotTd}>
@@ -386,7 +396,7 @@ const styles: { [key: string]: React.CSSProperties } = {
   lotTd: { color: '#fff', fontSize: '13px', padding: '6px 8px', borderBottom: '1px solid #1a1a2e' },
   lotInput: {
     padding: '4px 6px', backgroundColor: '#2a2a3e', color: '#fff',
-    border: '1px solid #444', borderRadius: '4px', fontSize: '12px', width: '100%'
+    border: '1px solid #444', borderRadius: '4px', fontSize: '13px', fontWeight: 'bold', width: '100%'
   },
   lotEditBtn: {
     padding: '2px 8px', backgroundColor: '#ff9900', color: '#000',
