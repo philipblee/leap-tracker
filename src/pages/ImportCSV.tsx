@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import {
   parseBuyCSV, parseSellCSV, parseFidelityCSV, parseFidelityClosedCSV,
-  parseFidelityActivity, detectFormat
+  parseFidelityActivity, detectFormat, normalizeAccount
 } from '../utils/csvParser';
 import type { BuyImportRow, SellImportRow, ClosedImportRow, ActivityImportRow } from '../utils/csvParser';
 import { findOrCreatePosition, getOpenPositions } from '../services/positionService';
@@ -90,8 +90,11 @@ function ImportCSV() {
         let failedSells = 0;
         for (const row of sells) {
           const matches = openPositions.filter(p =>
-            p.ticker === row.ticker && p.optionType === row.optionType &&
-            p.strike === row.strike && p.expiry === row.expiry
+            p.ticker === row.ticker &&
+            p.optionType === row.optionType &&
+            p.strike === row.strike &&
+            normalizeDate(p.expiry) === normalizeDate(row.expiry) &&
+            normalizeAccount(p.account) === normalizeAccount(row.account)
           );
           if (matches.length === 1) {
             await createPendingClose({
@@ -160,7 +163,8 @@ function ImportCSV() {
             p.ticker === row.ticker &&
             p.optionType === row.optionType &&
             p.strike === row.strike &&
-            normalizeDate(p.expiry) === normalizeDate(row.expiry)
+            normalizeDate(p.expiry) === normalizeDate(row.expiry) &&
+            normalizeAccount(p.account) === normalizeAccount(row.account)
           );
           if (!match?.id) continue;
           await closeLotsFIFO(match.id, row.contractsSold, row.sellDate, row.sellPrice);
