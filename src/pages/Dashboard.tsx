@@ -20,6 +20,9 @@ interface PortfolioSummary {
   totalPct: number;
 }
 
+const fmtWhole = (v: number) =>
+  new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD', maximumFractionDigits: 0 }).format(Math.trunc(v));
+
 function Dashboard() {
   const [portfolio, setPortfolio] = useState<PortfolioSummary | null>(null);
   const [snapshots, setSnapshots] = useState<Snapshot[]>([]);
@@ -143,11 +146,11 @@ function Dashboard() {
                 {[...snapshots].sort((a, b) => b.date.localeCompare(a.date)).map((s, i) => (
                   <tr key={s.id ?? s.date} style={{ backgroundColor: i % 2 === 0 ? '#0f0f1a' : '#1a1a2e' }}>
                     <td style={styles.td}>{s.date}</td>
-                    <td style={styles.td}>{formatCurrency(s.totalValue)}</td>
-                    <td style={styles.td}>{formatCurrency(s.totalCostBasis)}</td>
-                    <td style={{ ...styles.td, color: s.unrealizedPnl >= 0 ? '#00ff88' : '#ff4444' }}>{formatCurrency(s.unrealizedPnl)}</td>
-                    <td style={{ ...styles.td, color: s.realizedPnl >= 0 ? '#00ff88' : '#ff4444' }}>{formatCurrency(s.realizedPnl)}</td>
-                    <td style={{ ...styles.td, color: s.totalPnl >= 0 ? '#00ff88' : '#ff4444' }}>{formatCurrency(s.totalPnl)}</td>
+                    <td style={styles.td}>{fmtWhole(s.totalValue)}</td>
+                    <td style={styles.td}>{fmtWhole(s.totalCostBasis)}</td>
+                    <td style={{ ...styles.td, color: s.unrealizedPnl >= 0 ? '#00ff88' : '#ff4444' }}>{fmtWhole(s.unrealizedPnl)}</td>
+                    <td style={{ ...styles.td, color: s.realizedPnl >= 0 ? '#00ff88' : '#ff4444' }}>{fmtWhole(s.realizedPnl)}</td>
+                    <td style={{ ...styles.td, color: s.totalPnl >= 0 ? '#00ff88' : '#ff4444' }}>{fmtWhole(s.totalPnl)}</td>
                   </tr>
                 ))}
               </tbody>

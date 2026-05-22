@@ -19,16 +19,25 @@ function Positions() {
   const [selectedSummary, setSelectedSummary] = useState<PositionSummary | null>(null);
   const [detailSummary, setDetailSummary] = useState<PositionSummary | null>(null);
   const [refreshStatus, setRefreshStatus] = useState<{ succeeded: number; failed: Array<{ ticker: string; id: string }> } | null>(null);
-  const [viewMode, setViewMode] = useState<'normal' | 'compact'>(() =>
-    (localStorage.getItem('viewMode') as 'normal' | 'compact') || 'normal'
+  const [viewMode, setViewMode] = useState<'normal' | 'compact' | 'ticker'>(() =>
+    (localStorage.getItem('viewMode') as 'normal' | 'compact' | 'ticker') || 'ticker'
   );
+  const [expandedTickers, setExpandedTickers] = useState<Set<string>>(new Set());
 
   const toggleViewMode = () => {
-    const newMode = viewMode === 'normal' ? 'compact' : 'normal';
-    setViewMode(newMode);
-    localStorage.setItem('viewMode', newMode);
+    const next = viewMode === 'ticker' ? 'compact' : viewMode === 'compact' ? 'normal' : 'ticker';
+    setViewMode(next as 'normal' | 'compact' | 'ticker');
+    localStorage.setItem('viewMode', next);
   };
 
+  const toggleTicker = (ticker: string) => {
+    setExpandedTickers(prev => {
+      const next = new Set(prev);
+      if (next.has(ticker)) next.delete(ticker);
+      else next.add(ticker);
+      return next;
+    });
+  };
 
   const load = async () => {
     const [positions, lots] = await Promise.all([getOpenPositions(), getAllLots()]);
@@ -105,7 +114,6 @@ function Positions() {
     }
   };
 
-
   const sorted = [...filtered].sort((a, b) => {
     if (!sortColumn) return 0;
     let aVal: any, bVal: any;
@@ -128,12 +136,40 @@ function Positions() {
   const sortableColumns = new Set(['Account', 'Ticker', 'Expiry', 'Buy Date', 'Current Value', 'Cost Basis', 'P&L $', 'P&L %']);
   const failedIds = new Set(refreshStatus?.failed.map(f => f.id) ?? []);
 
+  // Ticker summary groups — sorted alphabetically by ticker
+  const tickerGroups = (() => {
+    const map = new Map<string, PositionSummary[]>();
+    for (const s of sorted) {
+      const t = s.position.ticker;
+      if (!map.has(t)) map.set(t, []);
+      map.get(t)!.push(s);
+    }
+    return Array.from(map.entries())
+      .sort(([a], [b]) => a.localeCompare(b))
+      .map(([ticker, positions]) => {
+        const totalCostBasis = positions.reduce((sum, s) => sum + s.totalCostBasis, 0);
+        const totalCurrentValue = positions.reduce((sum, s) => sum + (s.currentValue ?? s.totalCostBasis), 0);
+        const totalPnl = totalCurrentValue - totalCostBasis;
+        return {
+          ticker,
+          positions,
+          totalContracts: positions.reduce((sum, s) => sum + s.openContracts, 0),
+          totalCurrentValue,
+          totalCostBasis,
+          totalPnl,
+          totalPnlPct: totalCostBasis > 0 ? (totalPnl / totalCostBasis) * 100 : 0,
+        };
+      });
+  })();
+
   if (loading) return <p style={{ color: '#fff' }}>Loading...</p>;
 
   const totalCurrentValue = filtered.reduce((sum, s) => sum + (s.currentValue ?? s.totalCostBasis), 0);
   const totalCostBasis = filtered.reduce((sum, s) => sum + s.totalCostBasis, 0);
   const totalPnl = totalCurrentValue - totalCostBasis;
   const totalPnlPct = totalCostBasis > 0 ? (totalPnl / totalCostBasis) * 100 : 0;
+
+  const viewToggleLabel = viewMode === 'ticker' ? '📱 Compact' : viewMode === 'compact' ? '📊 Normal' : '🏷️ Ticker';
 
   return (
     <div>
@@ -149,7 +185,7 @@ function Positions() {
             + Add Position
           </button>
           <button style={styles.viewToggleBtn} onClick={toggleViewMode}>
-            {viewMode === 'normal' ? '📱 Compact' : '📊 Normal'}
+            {viewToggleLabel}
           </button>
         </div>
         {refreshStatus && (
@@ -170,7 +206,9 @@ function Positions() {
             <tr>
               {(viewMode === 'normal'
                 ? ['Ticker','Type','Strike','Expiry','Buy Date','Qty','Current Value','Cost Basis','P&L $','P&L %','Account','Actions']
-                : ['Position','Qty','Current Value','Cost Basis','P&L $','P&L %','Account','Actions']
+                : viewMode === 'compact'
+                ? ['Position','Qty','Current Value','Cost Basis','P&L $','P&L %','Account','Actions']
+                : ['Ticker','Qty','Current Value','Cost Basis','P&L $','P&L %','','']
               ).map(h => (
                 <th
                   key={h}
@@ -183,47 +221,112 @@ function Positions() {
             </tr>
           </thead>
           <tbody>
-            {sorted.map(s => {
-              const { position } = s;
-              const hasTBD = String(position.ticker) === 'TBD' || String(position.strike) === 'TBD' || String(position.expiry) === 'TBD';
-              return (
-                <tr key={position.id} style={{ ...styles.tr, cursor: 'pointer' }} onClick={() => setDetailSummary(s)}>
-                  {viewMode === 'normal' ? (
-                    <>
-                      <td style={styles.td}>
-                        {position.ticker}
+            {viewMode === 'ticker' ? (
+              tickerGroups.flatMap(group => {
+                const isExpanded = expandedTickers.has(group.ticker);
+                const summaryRow = (
+                  <tr key={`tg-${group.ticker}`}
+                      style={{ ...styles.tr, backgroundColor: '#1a1a2e', cursor: 'pointer' }}
+                      onClick={() => toggleTicker(group.ticker)}>
+                    <td style={{ ...styles.td, fontWeight: 'bold' }}>
+                      <span style={{ marginRight: '6px', fontSize: '11px', color: '#aaa' }}>{isExpanded ? '▼' : '▶'}</span>
+                      {group.ticker}
+                      <span style={{ color: '#888', fontWeight: 'normal', marginLeft: '8px', fontSize: '12px' }}>
+                        ({group.positions.length})
+                      </span>
+                    </td>
+                    <td style={styles.td}>{group.totalContracts}</td>
+                    <td style={styles.td}>{formatCurrency(group.totalCurrentValue)}</td>
+                    <td style={styles.td}>{formatCurrency(group.totalCostBasis)}</td>
+                    <td style={{ ...styles.td, color: group.totalPnl >= 0 ? '#00ff88' : '#ff4444' }}>
+                      {formatCurrency(group.totalPnl)}
+                    </td>
+                    <td style={{ ...styles.td, color: group.totalPnlPct >= 0 ? '#00ff88' : '#ff4444' }}>
+                      {formatPct(group.totalPnlPct)}
+                    </td>
+                    <td style={styles.td}></td>
+                    <td style={styles.td}></td>
+                  </tr>
+                );
+
+                if (!isExpanded) return [summaryRow];
+
+                const detailRows = group.positions.map(s => {
+                  const { position } = s;
+                  const hasTBD = String(position.ticker) === 'TBD' || String(position.strike) === 'TBD' || String(position.expiry) === 'TBD';
+                  return (
+                    <tr key={position.id}
+                        style={{ ...styles.tr, cursor: 'pointer', backgroundColor: '#0a0a14' }}
+                        onClick={() => setDetailSummary(s)}>
+                      <td style={{ ...styles.td, paddingLeft: '28px', color: '#bbb' }}>
+                        ↳ {position.optionType} ${position.strike} {position.expiry}
                         {hasTBD && <span title="Contains TBD fields — edit to fill in" style={{ marginLeft: '6px', color: '#ff9900' }}>⚠️</span>}
                       </td>
-                      <td style={styles.td}>{position.optionType}</td>
-                      <td style={styles.td}>${position.strike}</td>
-                      <td style={styles.td}>{position.expiry}</td>
-                      <td style={styles.td}>{position.buyDate ?? s.lots.find(l => l.isOpen)?.buyDate ?? '—'}</td>
-                    </>
-                  ) : (
-                    <td style={styles.td}>
-                      {position.ticker} {position.optionType} ${position.strike} {position.expiry}
-                      {hasTBD && <span title="Contains TBD fields — edit to fill in" style={{ marginLeft: '6px', color: '#ff9900' }}>⚠️</span>}
+                      <td style={styles.td}>{s.openContracts}</td>
+                      <td style={{ ...styles.td, color: failedIds.has(position.id!) ? '#ff9900' : '#fff' }}>
+                        {s.currentValue != null ? formatCurrency(s.currentValue) : '—'}
+                        {failedIds.has(position.id!) && <span style={{ marginLeft: '4px', fontSize: '10px' }} title="Last refresh failed">●</span>}
+                      </td>
+                      <td style={styles.td}>{formatCurrency(s.totalCostBasis)}</td>
+                      <td style={{ ...styles.td, color: s.unrealizedPnl == null ? '#fff' : s.unrealizedPnl >= 0 ? '#00ff88' : '#ff4444' }}>
+                        {s.unrealizedPnl != null ? formatCurrency(s.unrealizedPnl) : '—'}
+                      </td>
+                      <td style={{ ...styles.td, color: s.unrealizedPct == null ? '#fff' : s.unrealizedPct >= 0 ? '#00ff88' : '#ff4444' }}>
+                        {s.unrealizedPct != null ? formatPct(s.unrealizedPct) : '—'}
+                      </td>
+                      <td style={styles.td}>{position.account}</td>
+                      <td style={styles.td} onClick={e => e.stopPropagation()}>
+                        <button style={styles.closeBtn} onClick={() => setSelectedSummary(s)}>Close</button>
+                      </td>
+                    </tr>
+                  );
+                });
+
+                return [summaryRow, ...detailRows];
+              })
+            ) : (
+              sorted.map(s => {
+                const { position } = s;
+                const hasTBD = String(position.ticker) === 'TBD' || String(position.strike) === 'TBD' || String(position.expiry) === 'TBD';
+                return (
+                  <tr key={position.id} style={{ ...styles.tr, cursor: 'pointer' }} onClick={() => setDetailSummary(s)}>
+                    {viewMode === 'normal' ? (
+                      <>
+                        <td style={styles.td}>
+                          {position.ticker}
+                          {hasTBD && <span title="Contains TBD fields — edit to fill in" style={{ marginLeft: '6px', color: '#ff9900' }}>⚠️</span>}
+                        </td>
+                        <td style={styles.td}>{position.optionType}</td>
+                        <td style={styles.td}>${position.strike}</td>
+                        <td style={styles.td}>{position.expiry}</td>
+                        <td style={styles.td}>{position.buyDate ?? s.lots.find(l => l.isOpen)?.buyDate ?? '—'}</td>
+                      </>
+                    ) : (
+                      <td style={styles.td}>
+                        {position.ticker} {position.optionType} ${position.strike} {position.expiry}
+                        {hasTBD && <span title="Contains TBD fields — edit to fill in" style={{ marginLeft: '6px', color: '#ff9900' }}>⚠️</span>}
+                      </td>
+                    )}
+                    <td style={styles.td}>{s.openContracts}</td>
+                    <td style={{ ...styles.td, color: failedIds.has(position.id!) ? '#ff9900' : '#fff' }}>
+                      {s.currentValue != null ? formatCurrency(s.currentValue) : '—'}
+                      {failedIds.has(position.id!) && <span style={{ marginLeft: '4px', fontSize: '10px' }} title="Last refresh failed">●</span>}
                     </td>
-                  )}
-                  <td style={styles.td}>{s.openContracts}</td>
-                  <td style={{ ...styles.td, color: failedIds.has(position.id!) ? '#ff9900' : '#fff' }}>
-                    {s.currentValue != null ? formatCurrency(s.currentValue) : '—'}
-                    {failedIds.has(position.id!) && <span style={{ marginLeft: '4px', fontSize: '10px' }} title="Last refresh failed">●</span>}
-                  </td>
-                  <td style={styles.td}>{formatCurrency(s.totalCostBasis)}</td>
-                  <td style={{ ...styles.td, color: s.unrealizedPnl == null ? '#fff' : s.unrealizedPnl >= 0 ? '#00ff88' : '#ff4444' }}>
-                    {s.unrealizedPnl != null ? formatCurrency(s.unrealizedPnl) : '—'}
-                  </td>
-                  <td style={{ ...styles.td, color: s.unrealizedPct == null ? '#fff' : s.unrealizedPct >= 0 ? '#00ff88' : '#ff4444' }}>
-                    {s.unrealizedPct != null ? formatPct(s.unrealizedPct) : '—'}
-                  </td>
-                  <td style={styles.td}>{position.account}</td>
-                  <td style={styles.td} onClick={e => e.stopPropagation()}>
-                    <button style={styles.closeBtn} onClick={() => setSelectedSummary(s)}>Close</button>
-                  </td>
-                </tr>
-              );
-            })}
+                    <td style={styles.td}>{formatCurrency(s.totalCostBasis)}</td>
+                    <td style={{ ...styles.td, color: s.unrealizedPnl == null ? '#fff' : s.unrealizedPnl >= 0 ? '#00ff88' : '#ff4444' }}>
+                      {s.unrealizedPnl != null ? formatCurrency(s.unrealizedPnl) : '—'}
+                    </td>
+                    <td style={{ ...styles.td, color: s.unrealizedPct == null ? '#fff' : s.unrealizedPct >= 0 ? '#00ff88' : '#ff4444' }}>
+                      {s.unrealizedPct != null ? formatPct(s.unrealizedPct) : '—'}
+                    </td>
+                    <td style={styles.td}>{position.account}</td>
+                    <td style={styles.td} onClick={e => e.stopPropagation()}>
+                      <button style={styles.closeBtn} onClick={() => setSelectedSummary(s)}>Close</button>
+                    </td>
+                  </tr>
+                );
+              })
+            )}
             {/* Totals row */}
             <tr>
               <td style={styles.totalTd} colSpan={viewMode === 'normal' ? 5 : 1}><strong>TOTAL</strong></td>
