@@ -5,12 +5,14 @@ import { getPendingCloses, deletePendingClose } from '../services/pendingCloseSe
 import type { PendingClose, PositionSummary } from '../types';
 import { formatCurrency } from '../utils/calculations';
 import ClosePositionModal from '../components/ClosePositionModal';
+import ManualMatchModal from '../components/ManualMatchModal';
 
 function PendingCloses() {
   const [pendingCloses, setPendingCloses] = useState<PendingClose[]>([]);
   const [summaries, setSummaries] = useState<PositionSummary[]>([]);
   const [loading, setLoading] = useState(true);
   const [reviewing, setReviewing] = useState<{ pending: PendingClose; summary: PositionSummary } | null>(null);
+  const [manualMatching, setManualMatching] = useState<PendingClose | null>(null);
 
   const load = async () => {
     const [closes, positions, lots] = await Promise.all([
@@ -74,7 +76,12 @@ function PendingCloses() {
                           Review
                         </button>
                       ) : (
-                        <span style={{ color: '#ff4444', fontSize: '12px', marginRight: '8px' }}>No open position</span>
+                        <button
+                          style={styles.matchBtn}
+                          onClick={() => setManualMatching(pc)}
+                        >
+                          Match
+                        </button>
                       )}
                       <button style={styles.discardBtn} onClick={() => handleDiscard(pc.id!)}>
                         Discard
@@ -86,6 +93,18 @@ function PendingCloses() {
             </tbody>
           </table>
         </div>
+      )}
+
+      {manualMatching && (
+        <ManualMatchModal
+          pending={manualMatching}
+          summaries={summaries}
+          onClose={() => setManualMatching(null)}
+          onSaved={async () => {
+            setManualMatching(null);
+            load();
+          }}
+        />
       )}
 
       {reviewing && (
@@ -117,7 +136,8 @@ const styles: { [key: string]: React.CSSProperties } = {
   td: { padding: '12px', color: '#fff', borderBottom: '1px solid #222', whiteSpace: 'nowrap' },
   tr: { backgroundColor: '#0f0f1a' },
   reviewBtn: { padding: '4px 10px', backgroundColor: '#00d4ff', color: '#000', border: 'none', borderRadius: '4px', cursor: 'pointer', fontWeight: 'bold', marginRight: '6px' },
-  discardBtn: { padding: '4px 10px', backgroundColor: '#333', color: '#aaa', border: '1px solid #444', borderRadius: '4px', cursor: 'pointer' }
+  discardBtn: { padding: '4px 10px', backgroundColor: '#333', color: '#aaa', border: '1px solid #444', borderRadius: '4px', cursor: 'pointer' },
+  matchBtn: { backgroundColor: '#b8860b', color: '#fff', border: 'none', borderRadius: '4px', padding: '4px 10px', cursor: 'pointer', marginRight: '8px' }
 };
 
 export default PendingCloses;
