@@ -115,6 +115,13 @@ export const dailySnapshot = functions.pubsub
         lotsByPosition[lot.positionId].push(lot);
       }
 
+      const today = new Date().toISOString().split('T')[0];
+      const existingSnapshot = await db.collection('snapshots').where('date', '==', today).get();
+      if (!existingSnapshot.empty) {
+        console.log('Snapshot already exists for today, skipping.');
+        return null;
+      }
+
       const openPositions = positions.filter(p => p.isOpen);
 
       // Refresh prices for open positions; store per-contract value
@@ -224,4 +231,5 @@ export const dailySnapshot = functions.pubsub
     } catch (error) {
       console.error('Error saving daily snapshot:', error);
     }
+    return null;
   });

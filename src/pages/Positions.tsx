@@ -68,13 +68,10 @@ function Positions() {
           expiry: position.expiry
         }) as any;
           if (result.data.currentValue != null) {
+            const lastPrice = result.data.lastPrice ?? 0;
             const bid = result.data.bid ?? 0;
-            const price = bid > 0
-              ? result.data.price
-              : (position.price ?? result.data.price);
-            const currentValue = bid > 0
-              ? result.data.currentValue
-              : (position.currentValue ?? result.data.currentValue);
+            const price = bid > 0 ? bid : lastPrice;
+            const currentValue = price * 100;
 
             await updatePosition(position.id!, {
               lastPrice: result.data.lastPrice,
