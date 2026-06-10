@@ -343,11 +343,24 @@ function PositionDetailModal({ summary, onClose, onSaved }: Props) {
               <label style={styles.label}>Account</label>
               <input style={styles.input} name="account" value={posForm.account} onChange={handlePosChange} />
             </div>
-            <div style={styles.buttons}>
-              <button style={styles.cancelBtn} onClick={() => setEditingPosition(false)}>Cancel</button>
-              <button style={styles.saveBtn} onClick={handleSavePosition} disabled={savingPosition}>
-                {savingPosition ? 'Saving...' : 'Save Changes'}
+            <div style={{ ...styles.buttons, justifyContent: 'space-between' }}>
+              <button
+                style={styles.deleteBtn}
+                onClick={async () => {
+                  if (confirm(`Delete ${position.ticker} and all its lots? This cannot be undone.`)) {
+                    await deletePosition(position.id!);
+                    onSaved();
+                  }
+                }}
+              >
+                Delete Position
               </button>
+              <div style={{ display: 'flex', gap: '12px' }}>
+                <button style={styles.cancelBtn} onClick={() => setEditingPosition(false)}>Cancel</button>
+                <button style={styles.saveBtn} onClick={handleSavePosition} disabled={savingPosition}>
+                  {savingPosition ? 'Saving...' : 'Save Changes'}
+                </button>
+              </div>
             </div>
           </>
         )}

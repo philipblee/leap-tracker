@@ -40,11 +40,7 @@ export const updatePosition = async (id: string, updates: Partial<Position>): Pr
 };
 
 export const deletePosition = async (id: string): Promise<void> => {
-  const { getLotsForPosition, getOpenLots, deleteLot } = await import('./lotService');
-  const openLots = await getOpenLots(id);
-  if (openLots.length > 0) {
-    throw new Error('Cannot delete position with open lots');
-  }
+  const { getLotsForPosition, deleteLot } = await import('./lotService');
   const lots = await getLotsForPosition(id);
   await Promise.all(lots.map(l => deleteLot(l.id!)));
   await deleteDoc(doc(db, COLLECTION, id));
