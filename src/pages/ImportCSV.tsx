@@ -81,7 +81,7 @@ function ImportCSV() {
         const buyKeys = new Set(buys.map(r => `${r.ticker}|${r.optionType}|${r.strike}|${r.expiry}|${r.account}`));
 
         for (const row of buys) {
-          const positionId = await findOrCreatePosition(row.ticker, row.optionType, row.strike, row.expiry, row.account, row.buyDate, row.costBasis);
+          const positionId = await findOrCreatePosition(row.ticker, row.optionType, row.strike, row.expiry, row.account, row.accountNumber, row.buyDate, row.costBasis);
           await addLot({ positionId, buyDate: row.buyDate, contracts: row.contracts, costBasis: row.costBasis, isOpen: true });
         }
 
@@ -89,13 +89,28 @@ function ImportCSV() {
         let pendingCount = 0;
         let failedSells = 0;
         for (const row of sells) {
-          const matches = openPositions.filter(p =>
-            p.ticker === row.ticker &&
-            p.optionType === row.optionType &&
-            p.strike === row.strike &&
-            normalizeDate(p.expiry) === normalizeDate(row.expiry) &&
-            normalizeAccount(p.account) === normalizeAccount(row.account)
-          );
+          let sellMatch: typeof openPositions[0] | undefined;
+          if (row.accountNumber) {
+            const tier1 = openPositions.filter(p =>
+              p.ticker === row.ticker &&
+              p.optionType === row.optionType &&
+              p.strike === row.strike &&
+              normalizeDate(p.expiry) === normalizeDate(row.expiry) &&
+              p.accountNumber === row.accountNumber
+            );
+            if (tier1.length === 1) sellMatch = tier1[0];
+          }
+          if (!sellMatch) {
+            const tier2 = openPositions.filter(p =>
+              p.ticker === row.ticker &&
+              p.optionType === row.optionType &&
+              p.strike === row.strike &&
+              normalizeDate(p.expiry) === normalizeDate(row.expiry) &&
+              normalizeAccount(p.account) === normalizeAccount(row.account)
+            );
+            if (tier2.length === 1) sellMatch = tier2[0];
+          }
+          const matches = sellMatch ? [sellMatch] : [];
           if (matches.length === 1) {
             await createPendingClose({
               positionId: matches[0].id!,
@@ -119,7 +134,7 @@ function ImportCSV() {
         const uniqueKeys = new Set(rows.map(r => `${r.ticker}|${r.optionType}|${r.strike}|${r.expiry}|${r.account}`));
         for (const row of rows) {
           const positionId = await findOrCreatePosition(
-            row.ticker, row.optionType, row.strike, row.expiry, row.account, row.buyDate, row.costBasis
+            row.ticker, row.optionType, row.strike, row.expiry, row.account, row.accountNumber, row.buyDate, row.costBasis
           );
           await addLot({
             positionId,
@@ -140,7 +155,7 @@ function ImportCSV() {
         const uniqueKeys = new Set(rows.map(r => `${r.ticker}|${r.optionType}|${r.strike}|${r.expiry}|${r.account}`));
         for (const row of rows) {
           const positionId = await findOrCreatePosition(
-            row.ticker, row.optionType, row.strike, row.expiry, row.account, row.buyDate, row.costBasis
+            row.ticker, row.optionType, row.strike, row.expiry, row.account, row.accountNumber, row.buyDate, row.costBasis
           );
           await addLot({
             positionId,
@@ -159,13 +174,25 @@ function ImportCSV() {
         const openPositions = await getOpenPositions();
         let closed = 0;
         for (const row of preview as SellImportRow[]) {
-          const match = openPositions.find(p =>
-            p.ticker === row.ticker &&
-            p.optionType === row.optionType &&
-            p.strike === row.strike &&
-            normalizeDate(p.expiry) === normalizeDate(row.expiry) &&
-            normalizeAccount(p.account) === normalizeAccount(row.account)
-          );
+          let match: typeof openPositions[0] | undefined;
+          if (row.accountNumber) {
+            match = openPositions.find(p =>
+              p.ticker === row.ticker &&
+              p.optionType === row.optionType &&
+              p.strike === row.strike &&
+              normalizeDate(p.expiry) === normalizeDate(row.expiry) &&
+              p.accountNumber === row.accountNumber
+            );
+          }
+          if (!match) {
+            match = openPositions.find(p =>
+              p.ticker === row.ticker &&
+              p.optionType === row.optionType &&
+              p.strike === row.strike &&
+              normalizeDate(p.expiry) === normalizeDate(row.expiry) &&
+              normalizeAccount(p.account) === normalizeAccount(row.account)
+            );
+          }
           if (!match?.id) continue;
           await closeLotsFIFO(match.id, row.contractsSold, row.sellDate, row.sellPrice);
           closed++;

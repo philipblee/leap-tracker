@@ -4,6 +4,7 @@ import { getAllLots } from '../services/lotService';
 import type { PositionSummary } from '../types';
 import { formatCurrency, formatPct, formatDate, toSortableDate } from '../utils/calculations';
 import PositionDetailModal from '../components/PositionDetailModal';
+import { exportClosedPositionsCSV } from '../utils/csvExport';
 
 const getYear = (dateStr: string): string => {
   if (!dateStr) return '';
@@ -113,6 +114,9 @@ function ClosedPositions() {
           <select style={styles.select} value={accountFilter} onChange={e => setAccountFilter(e.target.value)}>
             {accounts.map(a => <option key={a} value={a}>{a}</option>)}
           </select>
+          <button style={styles.exportBtn} onClick={() => exportClosedPositionsCSV(filtered)}>
+            Export CSV
+          </button>
         </div>
       </div>
 
@@ -216,6 +220,7 @@ const styles: { [key: string]: React.CSSProperties } = {
   header: { display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '20px' },
   heading: { color: '#fff', margin: 0 },
   controls: { display: 'flex', gap: '10px', alignItems: 'center' },
+  exportBtn: { padding: '8px 12px', backgroundColor: 'transparent', color: '#aaa', border: '1px solid #444', borderRadius: '6px', cursor: 'pointer' },
   select: { padding: '8px 12px', backgroundColor: '#2a2a3e', color: '#fff', border: 'none', borderRadius: '6px' },
   banner: {
     backgroundColor: '#1a1a2e', padding: '16px 20px', borderRadius: '10px',

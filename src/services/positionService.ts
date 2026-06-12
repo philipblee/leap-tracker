@@ -46,7 +46,14 @@ export const deletePosition = async (id: string): Promise<void> => {
   await deleteDoc(doc(db, COLLECTION, id));
 };
 
+const normalizeDate = (date: string): string => {
+  if (!date || !date.includes('/')) return date;
+  const parts = date.split('/');
+  return `${parts[2]}-${parts[0].padStart(2, '0')}-${parts[1].padStart(2, '0')}`;
+};
+
 // Find a position matching the option symbol + account, or create one if it doesn't exist.
+// Tier-1 matches on accountNumber; tier-2 falls back to short-label account for legacy positions.
 // Returns the positionId.
 export const findOrCreatePosition = async (
   ticker: string,
@@ -54,25 +61,51 @@ export const findOrCreatePosition = async (
   strike: number,
   expiry: string,
   account: string,
+  accountNumber: string | undefined,
   buyDate: string,
   costBasis: number
 ): Promise<string> => {
-  const q = query(
-    collection(db, COLLECTION),
-    where('ticker', '==', ticker),
-    where('optionType', '==', optionType),
-    where('strike', '==', strike),
-    where('expiry', '==', expiry),
-    where('account', '==', account),
-    where('isOpen', '==', true),
-    where('buyDate', '==', buyDate),
-    where('costBasis', '==', costBasis)
-  );
-  const snapshot = await getDocs(q);
-  if (!snapshot.empty) {
-    return snapshot.docs[0].id;
+  const existingPositions = await getOpenPositions();
+
+  if (accountNumber) {
+    const tier1 = existingPositions.filter(p =>
+      p.ticker === ticker &&
+      p.optionType === optionType &&
+      p.strike === strike &&
+      normalizeDate(p.expiry) === normalizeDate(expiry) &&
+      p.accountNumber === accountNumber &&
+      p.isOpen === true
+    );
+    if (tier1.length === 1) return tier1[0].id!;
+    if (tier1.length > 1) {
+      console.warn(`Multiple tier-1 matches for ${ticker} ${strike} ${expiry} accountNumber=${accountNumber} — using most recently created`);
+      const sorted = [...tier1].sort((a, b) => b.buyDate.localeCompare(a.buyDate));
+      return sorted[0].id!;
+    }
   }
-  return addPosition({ ticker, optionType, strike, expiry, account, isOpen: true, buyDate, costBasis });
+
+  const tier2 = existingPositions.filter(p =>
+    p.ticker === ticker &&
+    p.optionType === optionType &&
+    p.strike === strike &&
+    normalizeDate(p.expiry) === normalizeDate(expiry) &&
+    p.account === account &&
+    !p.accountNumber &&
+    p.isOpen === true
+  );
+
+  if (tier2.length === 1) {
+    if (accountNumber) {
+      await updatePosition(tier2[0].id!, { accountNumber });
+    }
+    return tier2[0].id!;
+  }
+
+  if (tier2.length > 1) {
+    console.warn(`Ambiguous tier-2 match for ${ticker} ${strike} ${expiry} account=${account} — ${tier2.length} candidates, creating new position instead of guessing`);
+  }
+
+  return addPosition({ ticker, optionType, strike, expiry, account, accountNumber, isOpen: true, buyDate, costBasis });
 };
 
 // Aggregate lot data into a PositionSummary for each position.

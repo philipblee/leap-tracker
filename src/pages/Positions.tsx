@@ -7,6 +7,7 @@ import { getFunctions, httpsCallable } from 'firebase/functions';
 import AddPositionModal from '../components/AddPositionModal';
 import ClosePositionModal from '../components/ClosePositionModal';
 import PositionDetailModal from '../components/PositionDetailModal';
+import { exportOpenPositionsCSV } from '../utils/csvExport';
 
 function Positions() {
   const [summaries, setSummaries] = useState<PositionSummary[]>([]);
@@ -183,6 +184,9 @@ function Positions() {
           </button>
           <button style={styles.viewToggleBtn} onClick={toggleViewMode}>
             {viewToggleLabel}
+          </button>
+          <button style={styles.exportBtn} onClick={() => exportOpenPositionsCSV(filtered)}>
+            Export CSV
           </button>
         </div>
         {refreshStatus && (
@@ -377,6 +381,7 @@ const styles: { [key: string]: React.CSSProperties } = {
   refreshBtn: { padding: '8px 16px', backgroundColor: '#00d4ff', color: '#000', border: 'none', borderRadius: '6px', cursor: 'pointer', fontWeight: 'bold' },
   addBtn: { padding: '8px 16px', backgroundColor: '#00ff88', color: '#000', border: 'none', borderRadius: '6px', cursor: 'pointer', fontWeight: 'bold' },
   viewToggleBtn: { padding: '8px 16px', backgroundColor: 'transparent', color: '#aaa', border: '1px solid #444', borderRadius: '6px', cursor: 'pointer' },
+  exportBtn: { padding: '8px 16px', backgroundColor: 'transparent', color: '#aaa', border: '1px solid #444', borderRadius: '6px', cursor: 'pointer' },
   tableWrapper: { overflowX: 'auto' },
   table: { width: '100%', borderCollapse: 'collapse' },
   th: { backgroundColor: '#1a1a2e', color: '#aaa', padding: '12px', textAlign: 'left', borderBottom: '1px solid #333', whiteSpace: 'nowrap' },

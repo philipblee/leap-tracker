@@ -9,6 +9,7 @@ export interface Position {
   strike: number;
   expiry: string;
   account: Account;
+  accountNumber?: string;
   isOpen: boolean;
   buyDate: string;
   costBasis: number;

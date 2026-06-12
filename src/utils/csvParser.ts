@@ -1,6 +1,18 @@
 import Papa from 'papaparse';
 import type { OptionType } from '../types';
 
+export const ACCOUNT_NUMBER_MAP: Record<string, string> = {
+  '119072621': 'IRA',
+  '233267024': 'IRA ROTH',
+  'X69705290': 'DI Ind',
+  '209435910': 'DI IRA',
+  'Z40402241': 'Margin',
+};
+
+export function accountLabelFromNumber(accountNumber: string): string | null {
+  return ACCOUNT_NUMBER_MAP[accountNumber] ?? null;
+}
+
 const normalizeRow = (row: any): any => {
   const normalized: any = {};
   for (const key of Object.keys(row)) {
@@ -15,6 +27,7 @@ export interface BuyImportRow {
   strike: number;
   expiry: string;
   account: string;
+  accountNumber?: string;
   buyDate: string;
   contracts: number;
   costBasis: number;
@@ -27,6 +40,7 @@ export interface SellImportRow {
   strike: number;
   expiry: string;
   account: string;
+  accountNumber?: string;
   contractsSold: number;
   sellDate: string;
   sellPrice: number;
@@ -38,6 +52,7 @@ export interface ClosedImportRow {
   strike: number;
   expiry: string;
   account: string;
+  accountNumber?: string;
   buyDate: string;
   contracts: number;
   costBasis: number;
@@ -183,12 +198,28 @@ export const parseFidelityCSV = (file: File): Promise<ParseResult<BuyImportRow>>
           if (!parsed) { errors.push({ row: n, message: `Cannot parse symbol: ${symbol}` }); return; }
           const contracts = Number(r['quantity']?.trim());
           if (isNaN(contracts) || contracts <= 0) { errors.push({ row: n, message: `Invalid quantity at row ${n}` }); return; }
+          const rawAcctNum = r['account number']?.trim();
+          let account: string;
+          let accountNumber: string | undefined;
+          if (rawAcctNum) {
+            accountNumber = rawAcctNum;
+            const label = accountLabelFromNumber(rawAcctNum);
+            if (label) {
+              account = label;
+            } else {
+              account = 'UNRECOGNIZED:' + rawAcctNum;
+              errors.push({ row: n, message: `Unrecognized account number: ${rawAcctNum} — added with placeholder label, needs manual review` });
+            }
+          } else {
+            account = normalizeAccount(r['account name']?.trim() ?? r['account']?.trim() ?? 'Unknown');
+          }
           valid.push({
             ticker: parsed.ticker,
             optionType: parsed.optionType,
             strike: parsed.strike,
             expiry: parsed.expiry,
-            account: normalizeAccount(r['account name']?.trim() ?? r['account']?.trim() ?? 'Unknown'),
+            account,
+            accountNumber,
             buyDate: '1900-01-01',
             contracts,
             costBasis: cleanNumber(r['cost basis total'] ?? '0'),
@@ -220,12 +251,28 @@ export const parseFidelityClosedCSV = (file: File): Promise<ParseResult<ClosedIm
           if (isNaN(contracts) || contracts <= 0) { errors.push({ row: n, message: `Invalid quantity at row ${n}` }); return; }
           const costBasis = cleanNumber(r['cost basis'] ?? '0');
           const proceeds = cleanNumber(r['proceeds'] ?? '0');
+          const rawAcctNumC = r['account number']?.trim();
+          let accountC: string;
+          let accountNumberC: string | undefined;
+          if (rawAcctNumC) {
+            accountNumberC = rawAcctNumC;
+            const label = accountLabelFromNumber(rawAcctNumC);
+            if (label) {
+              accountC = label;
+            } else {
+              accountC = 'UNRECOGNIZED:' + rawAcctNumC;
+              errors.push({ row: n, message: `Unrecognized account number: ${rawAcctNumC} — added with placeholder label, needs manual review` });
+            }
+          } else {
+            accountC = normalizeAccount(r['account']?.trim() ?? r['account name']?.trim() ?? 'Unknown');
+          }
           valid.push({
             ticker: parsed.ticker,
             optionType: parsed.optionType,
             strike: parsed.strike,
             expiry: parsed.expiry,
-            account: r['account'] ?? r['account name'] ?? 'Unknown',
+            account: accountC,
+            accountNumber: accountNumberC,
             buyDate: r['date acquired']?.trim() ?? '1900-01-01',
             contracts,
             costBasis,
@@ -339,13 +386,27 @@ export const parseFidelityActivity = (file: File): Promise<ParseResult<ActivityI
             return;
           }
 
-          const accountRaw = r['account name'] ?? r['account name/number'] ?? r['account'] ?? '';
-          const account = normalizeAccount(accountRaw) || 'Unknown';
+          const rawAcctNumA = r['account number']?.trim();
+          let accountA: string;
+          let accountNumberA: string | undefined;
+          if (rawAcctNumA) {
+            accountNumberA = rawAcctNumA;
+            const label = accountLabelFromNumber(rawAcctNumA);
+            if (label) {
+              accountA = label;
+            } else {
+              accountA = 'UNRECOGNIZED:' + rawAcctNumA;
+              errors.push({ row: n, message: `Unrecognized account number: ${rawAcctNumA} — added with placeholder label, needs manual review` });
+            }
+          } else {
+            const accountRaw = r['account name'] ?? r['account name/number'] ?? r['account'] ?? '';
+            accountA = normalizeAccount(accountRaw) || 'Unknown';
+          }
 
           if (isBuy) {
-            valid.push({ ...parsed, account, buyDate: runDate, contracts: qty, costBasis: amount, transactionType: 'BUY' });
+            valid.push({ ...parsed, account: accountA, accountNumber: accountNumberA, buyDate: runDate, contracts: qty, costBasis: amount, transactionType: 'BUY' });
           } else {
-            valid.push({ ...parsed, account, contractsSold: qty, sellDate: runDate, sellPrice: amount, transactionType: 'SELL' });
+            valid.push({ ...parsed, account: accountA, accountNumber: accountNumberA, contractsSold: qty, sellDate: runDate, sellPrice: amount, transactionType: 'SELL' });
           }
         });
         resolve({ valid, errors });
