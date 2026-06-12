@@ -27,6 +27,7 @@ function ImportCSV() {
   const [savedResult, setSavedResult] = useState<{
     positions: number; lots: number; skipped: number;
     pendingCloses?: number; tbdCount?: number; failedSells?: number;
+    failedSellMessages?: string[];
   } | null>(null);
   const [showSkipped, setShowSkipped] = useState(false);
   const [detectedFormat, setDetectedFormat] = useState('');
@@ -88,29 +89,15 @@ function ImportCSV() {
         const openPositions = await getOpenPositions();
         let pendingCount = 0;
         let failedSells = 0;
+        const failedSellMessages: string[] = [];
         for (const row of sells) {
-          let sellMatch: typeof openPositions[0] | undefined;
-          if (row.accountNumber) {
-            const tier1 = openPositions.filter(p =>
-              p.ticker === row.ticker &&
-              p.optionType === row.optionType &&
-              p.strike === row.strike &&
-              normalizeDate(p.expiry) === normalizeDate(row.expiry) &&
-              p.accountNumber === row.accountNumber
-            );
-            if (tier1.length === 1) sellMatch = tier1[0];
-          }
-          if (!sellMatch) {
-            const tier2 = openPositions.filter(p =>
-              p.ticker === row.ticker &&
-              p.optionType === row.optionType &&
-              p.strike === row.strike &&
-              normalizeDate(p.expiry) === normalizeDate(row.expiry) &&
-              normalizeAccount(p.account) === normalizeAccount(row.account)
-            );
-            if (tier2.length === 1) sellMatch = tier2[0];
-          }
-          const matches = sellMatch ? [sellMatch] : [];
+          const matches = openPositions.filter(p =>
+            p.ticker === row.ticker &&
+            p.optionType === row.optionType &&
+            p.strike === row.strike &&
+            normalizeDate(p.expiry) === normalizeDate(row.expiry) &&
+            normalizeAccount(p.account) === normalizeAccount(row.account)
+          );
           if (matches.length === 1) {
             await createPendingClose({
               positionId: matches[0].id!,
@@ -125,10 +112,18 @@ function ImportCSV() {
             });
             pendingCount++;
           } else {
+            console.warn('Sell match failed:', {
+              ticker: row.ticker, optionType: row.optionType, strike: row.strike,
+              expiry: row.expiry, account: row.account, accountNumber: row.accountNumber,
+              date: row.sellDate, price: row.sellPrice, quantity: row.contractsSold,
+            });
+            failedSellMessages.push(
+              `Sell match failed: ${row.ticker} $${row.strike} ${row.optionType} exp ${row.expiry}, account=${row.account}, date=${row.sellDate}, amount=${formatCurrency(row.sellPrice)} — no open position found`
+            );
             failedSells++;
           }
         }
-        setSavedResult({ positions: buyKeys.size, lots: buys.length, skipped, pendingCloses: pendingCount, tbdCount, failedSells });
+        setSavedResult({ positions: buyKeys.size, lots: buys.length, skipped, pendingCloses: pendingCount, tbdCount, failedSells, failedSellMessages });
       } else if (detectedFormat === 'fidelity_closed') {
         const rows = preview as ClosedImportRow[];
         const uniqueKeys = new Set(rows.map(r => `${r.ticker}|${r.optionType}|${r.strike}|${r.expiry}|${r.account}`));
@@ -173,31 +168,32 @@ function ImportCSV() {
       } else {
         const openPositions = await getOpenPositions();
         let closed = 0;
+        let failedSells = 0;
+        const failedSellMessages: string[] = [];
         for (const row of preview as SellImportRow[]) {
-          let match: typeof openPositions[0] | undefined;
-          if (row.accountNumber) {
-            match = openPositions.find(p =>
-              p.ticker === row.ticker &&
-              p.optionType === row.optionType &&
-              p.strike === row.strike &&
-              normalizeDate(p.expiry) === normalizeDate(row.expiry) &&
-              p.accountNumber === row.accountNumber
+          const match = openPositions.find(p =>
+            p.ticker === row.ticker &&
+            p.optionType === row.optionType &&
+            p.strike === row.strike &&
+            normalizeDate(p.expiry) === normalizeDate(row.expiry) &&
+            normalizeAccount(p.account) === normalizeAccount(row.account)
+          );
+          if (!match?.id) {
+            console.warn('Sell match failed:', {
+              ticker: row.ticker, optionType: row.optionType, strike: row.strike,
+              expiry: row.expiry, account: row.account, accountNumber: row.accountNumber,
+              date: row.sellDate, price: row.sellPrice, quantity: row.contractsSold,
+            });
+            failedSellMessages.push(
+              `Sell match failed: ${row.ticker} $${row.strike} ${row.optionType} exp ${row.expiry}, account=${row.account}, date=${row.sellDate}, amount=${formatCurrency(row.sellPrice)} — no open position found`
             );
+            failedSells++;
+            continue;
           }
-          if (!match) {
-            match = openPositions.find(p =>
-              p.ticker === row.ticker &&
-              p.optionType === row.optionType &&
-              p.strike === row.strike &&
-              normalizeDate(p.expiry) === normalizeDate(row.expiry) &&
-              normalizeAccount(p.account) === normalizeAccount(row.account)
-            );
-          }
-          if (!match?.id) continue;
           await closeLotsFIFO(match.id, row.contractsSold, row.sellDate, row.sellPrice);
           closed++;
         }
-        setSavedResult({ positions: closed, lots: closed, skipped });
+        setSavedResult({ positions: closed, lots: closed, skipped, failedSells, failedSellMessages });
       }
       setPreview([]);
     } catch (err) {
@@ -392,13 +388,30 @@ function ImportCSV() {
               {savedResult.pendingCloses > 0 && <p style={{ ...styles.success, color: '#00d4ff' }}>⏳ {savedResult.pendingCloses} sell{savedResult.pendingCloses !== 1 ? 's' : ''} queued for review in Pending Closes</p>}
               {(savedResult.tbdCount ?? 0) > 0 && <p style={{ ...styles.success, color: '#ff9900' }}>⚠️ {savedResult.tbdCount} position{savedResult.tbdCount !== 1 ? 's' : ''} with TBD fields — edit after import</p>}
               {(savedResult.failedSells ?? 0) > 0 && <p style={{ ...styles.success, color: '#ff4444' }}>❌ {savedResult.failedSells} sell{savedResult.failedSells !== 1 ? 's' : ''} failed — no matching open position found</p>}
+              {(savedResult.failedSellMessages?.length ?? 0) > 0 && (
+                <div style={styles.failedSellList}>
+                  {savedResult.failedSellMessages!.map((msg, i) => (
+                    <p key={i} style={styles.failedSellMsg}>{msg}</p>
+                  ))}
+                </div>
+              )}
               {savedResult.skipped > 0 && <p style={{ ...styles.success, color: '#ff9900' }}>⚠️ {savedResult.skipped} row{savedResult.skipped !== 1 ? 's' : ''} skipped (parse errors)</p>}
             </>
           ) : (
-            <p style={styles.success}>
-              ✅ Imported {savedResult.positions} position{savedResult.positions !== 1 ? 's' : ''}, {savedResult.lots} lot{savedResult.lots !== 1 ? 's' : ''} created.
-              {savedResult.skipped > 0 && <span> {savedResult.skipped} row{savedResult.skipped !== 1 ? 's' : ''} skipped.</span>}
-            </p>
+            <>
+              <p style={styles.success}>
+                ✅ Imported {savedResult.positions} position{savedResult.positions !== 1 ? 's' : ''}, {savedResult.lots} lot{savedResult.lots !== 1 ? 's' : ''} created.
+                {savedResult.skipped > 0 && <span> {savedResult.skipped} row{savedResult.skipped !== 1 ? 's' : ''} skipped.</span>}
+              </p>
+              {(savedResult.failedSells ?? 0) > 0 && <p style={{ ...styles.success, color: '#ff4444' }}>❌ {savedResult.failedSells} sell{savedResult.failedSells !== 1 ? 's' : ''} failed — no matching open position found</p>}
+              {(savedResult.failedSellMessages?.length ?? 0) > 0 && (
+                <div style={styles.failedSellList}>
+                  {savedResult.failedSellMessages!.map((msg, i) => (
+                    <p key={i} style={styles.failedSellMsg}>{msg}</p>
+                  ))}
+                </div>
+              )}
+            </>
           )}
           {savedResult.skipped > 0 && errors.length > 0 && (
             <div>
@@ -444,7 +457,9 @@ const styles: { [key: string]: React.CSSProperties } = {
   successBox: { marginTop: '16px' },
   success: { color: '#00ff88', fontSize: '16px', margin: '0 0 8px 0' },
   toggleSkippedBtn: { padding: '4px 10px', backgroundColor: '#2a2a3e', color: '#aaa', border: '1px solid #444', borderRadius: '4px', cursor: 'pointer', fontSize: '13px' },
-  skippedList: { backgroundColor: '#2a0000', padding: '12px', borderRadius: '6px', marginTop: '8px' }
+  skippedList: { backgroundColor: '#2a0000', padding: '12px', borderRadius: '6px', marginTop: '8px' },
+  failedSellList: { backgroundColor: '#2a0000', padding: '10px 14px', borderRadius: '6px', marginTop: '4px' },
+  failedSellMsg: { color: '#ff8888', margin: '2px 0', fontSize: '12px', fontFamily: 'monospace' }
 };
 
 export default ImportCSV;
