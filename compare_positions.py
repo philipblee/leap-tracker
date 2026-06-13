@@ -2,7 +2,7 @@
 Compare LEAP Tracker exported CSVs against the trade_transactions.xlsx master.
 
 Usage:
-    python compare_positions.py open-positions.csv closed-positions.csv trade_transactions.xlsx
+-
 
 Matching key: TICKER + BUY_DATE + BUY_QUANTITY
 Amount tolerance: $1.00 on BUY_AMOUNT (and SELL_AMOUNT for closed)

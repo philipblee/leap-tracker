@@ -5,7 +5,13 @@
       "Bash(git add *)",
       "Bash(git commit -m ' *)",
       "Bash(git push *)",
-      "Bash(firebase deploy *)"
+      "Bash(firebase deploy *)",
+      "Bash(node scripts/check-orphan-positions.mjs)",
+      "Bash(node --use-system-ca scripts/check-orphan-positions.mjs)",
+      "Bash(node --use-system-ca scripts/audit-positions-lots.mjs)",
+      "Bash(node --use-system-ca scripts/close-lots-group1.mjs)",
+      "Bash(node --use-system-ca scripts/delete-positions-group2.mjs)",
+      "Bash(node --use-system-ca scripts/delete-lots-group3.mjs)"
     ]
   }
 }
