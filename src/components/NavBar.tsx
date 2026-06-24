@@ -1,7 +1,25 @@
+import { useState } from 'react';
 import { Link, useLocation } from 'react-router-dom';
+import { getFunctions, httpsCallable } from 'firebase/functions';
 
 function NavBar() {
   const location = useLocation();
+  const [running, setRunning] = useState(false);
+  const [msg, setMsg] = useState('');
+
+  const handleSnapshot = async () => {
+    setRunning(true);
+    setMsg('');
+    try {
+      const fn = httpsCallable(getFunctions(), 'runSnapshotManually');
+      await fn({});
+      setMsg('✓');
+    } catch {
+      setMsg('✗');
+    } finally {
+      setRunning(false);
+    }
+  };
 
   const navStyle = {};
 
@@ -29,6 +47,14 @@ function NavBar() {
           📈 LEAP Tracker
         </span>
         <Link to="/dashboard" style={linkStyle('/dashboard')}>Dashboard</Link>
+        <button
+          onClick={handleSnapshot}
+          disabled={running}
+          style={{ padding: '4px 10px', fontSize: '13px', cursor: running ? 'not-allowed' : 'pointer', opacity: running ? 0.6 : 1, backgroundColor: '#2a2a3e', color: '#fff', border: '1px solid #444', borderRadius: '4px' }}
+        >
+          {running ? '...' : '📸'}
+        </button>
+        {msg && <span style={{ fontSize: '13px', color: msg === '✓' ? '#00ff88' : '#ff4444' }}>{msg}</span>}
         <Link to="/positions" style={linkStyle('/positions')}>Open Positions</Link>
         <Link to="/closed" style={linkStyle('/closed')}>Closed Positions</Link>
         <Link to="/import" style={linkStyle('/import')}>Import CSV</Link>
