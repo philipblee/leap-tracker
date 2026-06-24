@@ -88,8 +88,6 @@ function ImportCSV() {
 
         const openPositions = await getOpenPositions();
         let pendingCount = 0;
-        let failedSells = 0;
-        const failedSellMessages: string[] = [];
         for (const row of sells) {
           const matches = openPositions.filter(p =>
             p.ticker === row.ticker &&
@@ -98,32 +96,21 @@ function ImportCSV() {
             normalizeDate(p.expiry) === normalizeDate(row.expiry) &&
             normalizeAccount(p.account) === normalizeAccount(row.account)
           );
-          if (matches.length === 1) {
-            await createPendingClose({
-              positionId: matches[0].id!,
-              ticker: row.ticker,
-              strike: row.strike,
-              expiry: row.expiry,
-              account: row.account,
-              contractsToClose: row.contractsSold,
-              sellDate: row.sellDate,
-              sellPrice: row.sellPrice,
-              importSource: 'fidelity_activity'
-            });
-            pendingCount++;
-          } else {
-            console.warn('Sell match failed:', {
-              ticker: row.ticker, optionType: row.optionType, strike: row.strike,
-              expiry: row.expiry, account: row.account, accountNumber: row.accountNumber,
-              date: row.sellDate, price: row.sellPrice, quantity: row.contractsSold,
-            });
-            failedSellMessages.push(
-              `Sell match failed: ${row.ticker} $${row.strike} ${row.optionType} exp ${row.expiry}, account=${row.account}, date=${row.sellDate}, amount=${formatCurrency(row.sellPrice)} — no open position found`
-            );
-            failedSells++;
-          }
+          await createPendingClose({
+            positionId: matches.length >= 1 ? matches[0].id! : '',
+            ticker: row.ticker,
+            strike: row.strike,
+            expiry: row.expiry,
+            account: row.account,
+            contractsToClose: row.contractsSold,
+            sellDate: row.sellDate,
+            sellPrice: row.sellPrice,
+            importSource: 'fidelity_activity',
+            matched: matches.length === 1,
+          });
+          pendingCount++;
         }
-        setSavedResult({ positions: buyKeys.size, lots: buys.length, skipped, pendingCloses: pendingCount, tbdCount, failedSells, failedSellMessages });
+        setSavedResult({ positions: buyKeys.size, lots: buys.length, skipped, pendingCloses: pendingCount, tbdCount });
       } else if (detectedFormat === 'fidelity_closed') {
         const rows = preview as ClosedImportRow[];
         const uniqueKeys = new Set(rows.map(r => `${r.ticker}|${r.optionType}|${r.strike}|${r.expiry}|${r.account}`));
@@ -387,14 +374,6 @@ function ImportCSV() {
               {savedResult.lots > 0 && <p style={styles.success}>✓ {savedResult.lots} buy{savedResult.lots !== 1 ? 's' : ''} imported successfully</p>}
               {savedResult.pendingCloses > 0 && <p style={{ ...styles.success, color: '#00d4ff' }}>⏳ {savedResult.pendingCloses} sell{savedResult.pendingCloses !== 1 ? 's' : ''} queued for review in Pending Closes</p>}
               {(savedResult.tbdCount ?? 0) > 0 && <p style={{ ...styles.success, color: '#ff9900' }}>⚠️ {savedResult.tbdCount} position{savedResult.tbdCount !== 1 ? 's' : ''} with TBD fields — edit after import</p>}
-              {(savedResult.failedSells ?? 0) > 0 && <p style={{ ...styles.success, color: '#ff4444' }}>❌ {savedResult.failedSells} sell{savedResult.failedSells !== 1 ? 's' : ''} failed — no matching open position found</p>}
-              {(savedResult.failedSellMessages?.length ?? 0) > 0 && (
-                <div style={styles.failedSellList}>
-                  {savedResult.failedSellMessages!.map((msg, i) => (
-                    <p key={i} style={styles.failedSellMsg}>{msg}</p>
-                  ))}
-                </div>
-              )}
               {savedResult.skipped > 0 && <p style={{ ...styles.success, color: '#ff9900' }}>⚠️ {savedResult.skipped} row{savedResult.skipped !== 1 ? 's' : ''} skipped (parse errors)</p>}
             </>
           ) : (

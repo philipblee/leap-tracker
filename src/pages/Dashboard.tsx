@@ -4,6 +4,8 @@ import { getAllLots } from '../services/lotService';
 import { getSnapshots } from '../services/snapshotService';
 import { calcPortfolioSummary, formatCurrency, formatPct } from '../utils/calculations';
 import type { Snapshot } from '../types';
+import { httpsCallable } from 'firebase/functions';
+import { functions } from '../services/firebase';
 import {
   LineChart, Line, XAxis, YAxis, CartesianGrid,
   Tooltip, Legend, ResponsiveContainer
@@ -28,6 +30,8 @@ function Dashboard() {
   const [snapshots, setSnapshots] = useState<Snapshot[]>([]);
   const [chartView, setChartView] = useState<'dollar' | 'percent'>('dollar');
   const [loading, setLoading] = useState(true);
+  const [snapshotRunning, setSnapshotRunning] = useState(false);
+  const [snapshotMsg, setSnapshotMsg] = useState('');
 
   useEffect(() => {
     const load = async () => {
@@ -45,6 +49,20 @@ function Dashboard() {
     };
     load();
   }, []);
+
+  const handleRunSnapshot = async () => {
+    setSnapshotRunning(true);
+    setSnapshotMsg('');
+    try {
+      const fn = httpsCallable(functions, 'runSnapshotManually');
+      await fn({});
+      setSnapshotMsg('Snapshot complete');
+    } catch (e: any) {
+      setSnapshotMsg('Failed: ' + (e.message || 'unknown error'));
+    } finally {
+      setSnapshotRunning(false);
+    }
+  };
 
   if (loading || !portfolio) return <p style={{ color: '#fff' }}>Loading...</p>;
 
@@ -98,7 +116,17 @@ function Dashboard() {
       {/* Chart */}
       <div style={styles.chartContainer}>
         <div style={styles.chartHeader}>
-          <h3 style={{ color: '#fff', margin: 0 }}>Portfolio P&L Over Time</h3>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+            <h3 style={{ color: '#fff', margin: 0 }}>Portfolio P&L Over Time</h3>
+            <button
+              onClick={handleRunSnapshot}
+              disabled={snapshotRunning}
+              style={{ padding: '6px 12px', cursor: snapshotRunning ? 'not-allowed' : 'pointer', opacity: snapshotRunning ? 0.6 : 1, borderRadius: 6, border: 'none', backgroundColor: '#2a2a3e', color: '#fff', fontWeight: 'bold' }}
+            >
+              {snapshotRunning ? 'Running...' : 'Snapshot'}
+            </button>
+            {snapshotMsg && <span style={{ fontSize: 13, color: snapshotMsg.startsWith('Failed') ? '#ff4444' : '#00ff88' }}>{snapshotMsg}</span>}
+          </div>
           <div style={styles.toggle}>
             <button
               style={{ ...styles.toggleBtn, backgroundColor: isDollar ? '#00d4ff' : '#2a2a3e', color: isDollar ? '#000' : '#fff' }}

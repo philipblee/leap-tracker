@@ -89,4 +89,5 @@ export interface PendingClose {
   sellPrice: number;
   importSource: string;
   createdAt: string;
+  matched?: boolean;
 }

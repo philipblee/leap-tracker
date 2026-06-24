@@ -68,7 +68,7 @@ function PendingCloses() {
                     <td style={styles.td}>{formatCurrency(pc.sellPrice)}</td>
                     <td style={{ ...styles.td, color: '#555', fontSize: '12px' }}>{pc.importSource}</td>
                     <td style={styles.td} onClick={e => e.stopPropagation()}>
-                      {summary ? (
+                      {summary && pc.positionId ? (
                         <button
                           style={styles.reviewBtn}
                           onClick={() => setReviewing({ pending: pc, summary })}

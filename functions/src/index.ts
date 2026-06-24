@@ -94,142 +94,152 @@ export const getOptionPrice = functions.https.onCall(async (data) => {
   }
 });
 
-export const dailySnapshot = functions.pubsub
-  .schedule('30 16 * * 1-5')
+async function runSnapshot(): Promise<void> {
+  // Load all positions and lots in parallel
+  const [posSnap, lotsSnap] = await Promise.all([
+    db.collection('positions').get(),
+    db.collection('lots').get()
+  ]);
+
+  const positions = posSnap.docs.map(d => ({ id: d.id, ...d.data() })) as any[];
+  const lots = lotsSnap.docs.map(d => ({ id: d.id, ...d.data() })) as any[];
+
+  // Group lots by positionId
+  const lotsByPosition: { [positionId: string]: any[] } = {};
+  for (const lot of lots) {
+    if (!lotsByPosition[lot.positionId]) lotsByPosition[lot.positionId] = [];
+    lotsByPosition[lot.positionId].push(lot);
+  }
+
+  const today = new Date().toISOString().split('T')[0];
+  const existingSnapshot = await db.collection('snapshots').where('date', '==', today).get();
+  if (!existingSnapshot.empty) {
+    console.log('Snapshot already exists for today, skipping.');
+    return;
+  }
+
+  const openPositions = positions.filter(p => p.isOpen);
+
+  // Refresh prices for open positions; store per-contract value
+  for (const position of openPositions) {
+    try {
+      const result = await fetchOptionPrice(position.ticker, position.optionType, position.strike, position.expiry);
+      if (result.currentValue != null) {
+        const price = Math.max(result.lastPrice ?? 0, result.bid ?? 0);
+        await db.collection('positions').doc(position.id).update({
+          lastPrice: result.lastPrice,
+          bid: result.bid,
+          ask: result.ask,
+          price,
+          currentValue: price * 100,
+          lastPriceDate: new Date().toISOString().split('T')[0]
+        });
+        position.currentValue = price * 100;
+      } else {
+        console.error(`runSnapshot: skipping price update for ${position.ticker} — ${result.error}`);
+      }
+    } catch (err: any) {
+      console.error(`runSnapshot: unexpected error for ${position.ticker}:`, err.message);
+    }
+  }
+
+  // Compute unrealized P&L from open positions using lot-derived open contract counts
+  let totalCostBasis = 0;
+  let totalValue = 0;
+  for (const position of openPositions) {
+    const openLots = (lotsByPosition[position.id] ?? []).filter((l: any) => l.isOpen);
+    const openContracts = openLots.reduce((sum: number, l: any) => sum + l.contracts, 0);
+    const costBasis = openLots.reduce((sum: number, l: any) => sum + l.costBasis, 0);
+    const value = position.currentValue != null
+      ? position.currentValue * openContracts
+      : costBasis;
+    totalCostBasis += costBasis;
+    totalValue += value;
+  }
+  const unrealizedPnl = totalValue - totalCostBasis;
+  const unrealizedPct = totalCostBasis === 0 ? 0 : (unrealizedPnl / totalCostBasis) * 100;
+
+  // Realized P&L from closed lots across all positions
+  const allClosedLots = lots.filter((l: any) => !l.isOpen);
+  const realizedPnl = allClosedLots.reduce((sum: number, l: any) => sum + (l.realizedPnl ?? 0), 0);
+  const totalClosedCost = allClosedLots.reduce((sum: number, l: any) => sum + l.costBasis, 0);
+  const realizedPct = totalClosedCost === 0 ? 0 : (realizedPnl / totalClosedCost) * 100;
+
+  const totalPnl = unrealizedPnl + realizedPnl;
+  const totalBasis = totalCostBasis + totalClosedCost;
+  const totalPct = totalBasis === 0 ? 0 : (totalPnl / totalBasis) * 100;
+
+  // Per-account breakdown
+  const accountSet = new Set(positions.map((p: any) => p.account));
+  const byAccount: any = {};
+  for (const account of accountSet) {
+    const accountOpenPositions = openPositions.filter((p: any) => p.account === account);
+    let aCostBasis = 0, aValue = 0;
+    for (const position of accountOpenPositions) {
+      const openLots = (lotsByPosition[position.id] ?? []).filter((l: any) => l.isOpen);
+      const openContracts = openLots.reduce((sum: number, l: any) => sum + l.contracts, 0);
+      const costBasis = openLots.reduce((sum: number, l: any) => sum + l.costBasis, 0);
+      aCostBasis += costBasis;
+      aValue += position.currentValue != null ? position.currentValue * openContracts : costBasis;
+    }
+    const aUnrealized = aValue - aCostBasis;
+
+    const accountClosedLots = allClosedLots.filter((l: any) => {
+      const pos = positions.find((p: any) => p.id === l.positionId);
+      return pos?.account === account;
+    });
+    const aRealized = accountClosedLots.reduce((sum: number, l: any) => sum + (l.realizedPnl ?? 0), 0);
+    const aClosedCost = accountClosedLots.reduce((sum: number, l: any) => sum + l.costBasis, 0);
+    const aTotalPnl = aUnrealized + aRealized;
+    const aTotalBasis = aCostBasis + aClosedCost;
+
+    byAccount[account as string] = {
+      costBasis: aCostBasis,
+      value: aValue,
+      unrealizedPnl: aUnrealized,
+      realizedPnl: aRealized,
+      totalPnl: aTotalPnl,
+      totalPct: aTotalBasis === 0 ? 0 : (aTotalPnl / aTotalBasis) * 100
+    };
+  }
+
+  const [qqqPrice, spyPrice] = await Promise.all([
+    fetchStockPrice('QQQ'),
+    fetchStockPrice('SPY')
+  ]);
+
+  await db.collection('snapshots').add({
+    date: new Date().toISOString().split('T')[0],
+    totalCostBasis,
+    totalValue,
+    unrealizedPnl,
+    unrealizedPct,
+    realizedPnl,
+    realizedPct,
+    totalPnl,
+    totalPct,
+    qqqPrice,
+    spyPrice,
+    byAccount
+  });
+
+  console.log('Daily snapshot saved successfully');
+}
+
+export const dailySnapshot = functions
+  .runWith({ timeoutSeconds: 300, memory: '256MB' })
+  .pubsub.schedule('30 16 * * 1-5')
   .timeZone('America/New_York')
   .onRun(async () => {
     try {
-      // Load all positions and lots in parallel
-      const [posSnap, lotsSnap] = await Promise.all([
-        db.collection('positions').get(),
-        db.collection('lots').get()
-      ]);
-
-      const positions = posSnap.docs.map(d => ({ id: d.id, ...d.data() })) as any[];
-      const lots = lotsSnap.docs.map(d => ({ id: d.id, ...d.data() })) as any[];
-
-      // Group lots by positionId
-      const lotsByPosition: { [positionId: string]: any[] } = {};
-      for (const lot of lots) {
-        if (!lotsByPosition[lot.positionId]) lotsByPosition[lot.positionId] = [];
-        lotsByPosition[lot.positionId].push(lot);
-      }
-
-      const today = new Date().toISOString().split('T')[0];
-      const existingSnapshot = await db.collection('snapshots').where('date', '==', today).get();
-      if (!existingSnapshot.empty) {
-        console.log('Snapshot already exists for today, skipping.');
-        return null;
-      }
-
-      const openPositions = positions.filter(p => p.isOpen);
-
-      // Refresh prices for open positions; store per-contract value
-      for (const position of openPositions) {
-        try {
-          const result = await fetchOptionPrice(position.ticker, position.optionType, position.strike, position.expiry);
-          if (result.currentValue != null) {
-            const price = Math.max(result.lastPrice ?? 0, result.bid ?? 0);
-            await db.collection('positions').doc(position.id).update({
-              lastPrice: result.lastPrice,
-              bid: result.bid,
-              ask: result.ask,
-              price,
-              currentValue: price * 100,
-              lastPriceDate: new Date().toISOString().split('T')[0]
-            });
-            position.currentValue = price * 100;
-          } else {
-            console.error(`dailySnapshot: skipping price update for ${position.ticker} — ${result.error}`);
-          }
-        } catch (err: any) {
-          console.error(`dailySnapshot: unexpected error for ${position.ticker}:`, err.message);
-        }
-      }
-
-      // Compute unrealized P&L from open positions using lot-derived open contract counts
-      let totalCostBasis = 0;
-      let totalValue = 0;
-      for (const position of openPositions) {
-        const openLots = (lotsByPosition[position.id] ?? []).filter((l: any) => l.isOpen);
-        const openContracts = openLots.reduce((sum: number, l: any) => sum + l.contracts, 0);
-        const costBasis = openLots.reduce((sum: number, l: any) => sum + l.costBasis, 0);
-        const value = position.currentValue != null
-          ? position.currentValue * openContracts
-          : costBasis;
-        totalCostBasis += costBasis;
-        totalValue += value;
-      }
-      const unrealizedPnl = totalValue - totalCostBasis;
-      const unrealizedPct = totalCostBasis === 0 ? 0 : (unrealizedPnl / totalCostBasis) * 100;
-
-      // Realized P&L from closed lots across all positions
-      const allClosedLots = lots.filter((l: any) => !l.isOpen);
-      const realizedPnl = allClosedLots.reduce((sum: number, l: any) => sum + (l.realizedPnl ?? 0), 0);
-      const totalClosedCost = allClosedLots.reduce((sum: number, l: any) => sum + l.costBasis, 0);
-      const realizedPct = totalClosedCost === 0 ? 0 : (realizedPnl / totalClosedCost) * 100;
-
-      const totalPnl = unrealizedPnl + realizedPnl;
-      const totalBasis = totalCostBasis + totalClosedCost;
-      const totalPct = totalBasis === 0 ? 0 : (totalPnl / totalBasis) * 100;
-
-      // Per-account breakdown
-      const accountSet = new Set(positions.map((p: any) => p.account));
-      const byAccount: any = {};
-      for (const account of accountSet) {
-        const accountOpenPositions = openPositions.filter((p: any) => p.account === account);
-        let aCostBasis = 0, aValue = 0;
-        for (const position of accountOpenPositions) {
-          const openLots = (lotsByPosition[position.id] ?? []).filter((l: any) => l.isOpen);
-          const openContracts = openLots.reduce((sum: number, l: any) => sum + l.contracts, 0);
-          const costBasis = openLots.reduce((sum: number, l: any) => sum + l.costBasis, 0);
-          aCostBasis += costBasis;
-          aValue += position.currentValue != null ? position.currentValue * openContracts : costBasis;
-        }
-        const aUnrealized = aValue - aCostBasis;
-
-        const accountClosedLots = allClosedLots.filter((l: any) => {
-          const pos = positions.find((p: any) => p.id === l.positionId);
-          return pos?.account === account;
-        });
-        const aRealized = accountClosedLots.reduce((sum: number, l: any) => sum + (l.realizedPnl ?? 0), 0);
-        const aClosedCost = accountClosedLots.reduce((sum: number, l: any) => sum + l.costBasis, 0);
-        const aTotalPnl = aUnrealized + aRealized;
-        const aTotalBasis = aCostBasis + aClosedCost;
-
-        byAccount[account as string] = {
-          costBasis: aCostBasis,
-          value: aValue,
-          unrealizedPnl: aUnrealized,
-          realizedPnl: aRealized,
-          totalPnl: aTotalPnl,
-          totalPct: aTotalBasis === 0 ? 0 : (aTotalPnl / aTotalBasis) * 100
-        };
-      }
-
-    const [qqqPrice, spyPrice] = await Promise.all([
-      fetchStockPrice('QQQ'),
-      fetchStockPrice('SPY')
-    ]);
-
-    await db.collection('snapshots').add({
-      date: new Date().toISOString().split('T')[0],
-      totalCostBasis,
-      totalValue,
-      unrealizedPnl,
-      unrealizedPct,
-      realizedPnl,
-      realizedPct,
-      totalPnl,
-      totalPct,
-      qqqPrice,
-      spyPrice,
-      byAccount
-    });
-
-      console.log('Daily snapshot saved successfully');
+      await runSnapshot();
     } catch (error) {
       console.error('Error saving daily snapshot:', error);
     }
     return null;
   });
+
+export const runSnapshotManually = functions.https.onCall(async () => {
+  await runSnapshot();
+  return { success: true };
+});

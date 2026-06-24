@@ -11,7 +11,15 @@
       "Bash(node --use-system-ca scripts/audit-positions-lots.mjs)",
       "Bash(node --use-system-ca scripts/close-lots-group1.mjs)",
       "Bash(node --use-system-ca scripts/delete-positions-group2.mjs)",
-      "Bash(node --use-system-ca scripts/delete-lots-group3.mjs)"
+      "Bash(node --use-system-ca scripts/delete-lots-group3.mjs)",
+      "Bash(firebase login *)",
+      "Bash(curl *)",
+      "Bash(firebase --version)",
+      "Bash(firebase login:list)",
+      "Bash(npm install *)",
+      "Bash(set NODE_TLS_REJECT_UNAUTHORIZED=0)",
+      "PowerShell(firebase deploy *)",
+      "PowerShell(firebase functions:list *)"
     ]
   }
 }
